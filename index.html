@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>KOMOREBI // SHELL — Signal Observatory, Live Telemetry, Infinite Wall &amp; Forensics</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20100%20100%22%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20rx%3D%2218%22%20fill%3D%22%2306070a%22/%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2244%22%20fill%3D%22none%22%20stroke%3D%22%23e5b84b%22%20stroke-width%3D%227%22/%3E%3CclipPath%20id%3D%22c%22%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2238%22/%3E%3C/clipPath%3E%3Cg%20clip-path%3D%22url%28%23c%29%22%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2212%22%20r%3D%2220%22%20fill%3D%22%23e5b84b%22/%3E%3Cpath%20d%3D%22M8%2C66%20L30%2C60%20L44%2C63%20L60%2C52%20L76%2C49%20L94%2C36%22%20fill%3D%22none%22%20stroke%3D%22%23ffd877%22%20stroke-width%3D%225%22%20stroke-linejoin%3D%22round%22%20stroke-linecap%3D%22round%22/%3E%3C/g%3E%3C/svg%3E" />
+  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20100%20100%22%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20rx%3D%2218%22%20fill%3D%22%2306070a%22/%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2244%22%20fill%3D%22none%22%20stroke%3D%22%23e5b84b%22%20stroke-width%3D%227%22/%3E%3CclipPath%20id%3D%22c%22%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2238%22/%3E%3C/clipPath%3E%3Cg%20clip-path%3D%22url%28%23c%29%22%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2212%22%20r%3D%2220%22%20fill%3D%22%23e5b84b%22/%3E%3Cpath%20d%3D%22M8%2C66%20L30%2C60%20L44%2C63%20L60%2C52%20L76%2C49%20L94%2C36%22%20fill%3D%22none%22%20stroke%3D%22%23ffd877%22%20stroke-width%3D%225%22%20stroke-linejoin%3D%22round%22%20stroke-linecap%3D%22round%22/%3E%3C/g%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -38,6 +40,9 @@
     #gate-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
     #entry-gate > div { position: relative; z-index: 10; max-width: 36rem; width: calc(100% - 3rem); text-align: center; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; }
     #enter-shell-btn { background: #e5b84b; color: #06070a; font-weight: 700; padding: 12px 24px; border: 0; border-radius: 8px; cursor: pointer; }
+    .km-gate { display: block; margin: 0 auto; filter: drop-shadow(0 0 18px rgba(229, 184, 75, 0.35)); }
+    .km-boot { max-width: 56rem; width: 100%; margin: 0 auto 12px; filter: drop-shadow(0 0 10px rgba(229, 184, 75, 0.3)); }
+    @media (min-width: 640px) { .km-gate { width: 132px; height: 132px; } }
     /* Boot screen styled without Tailwind so it renders even if the CDN fails */
     #boot-screen { position: fixed; inset: 0; z-index: 60; background: #06070a; display: flex; flex-direction: column; padding: 16px; font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace; transition: opacity .5s; cursor: pointer; }
     #boot-screen.hidden { display: none; }
@@ -86,10 +91,32 @@
 </head>
 <body class="min-h-screen bg-void bg-grid-pattern text-zinc-200 flex flex-col">
 
+  <!-- KOMOREBI mark (SVG sprite; not display:none so gradients render in Safari/Firefox) -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+<defs>
+  <linearGradient id="kmGold" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#f4d784"/><stop offset=".45" stop-color="#e5b84b"/><stop offset="1" stop-color="#b8892f"/>
+  </linearGradient>
+  <clipPath id="kmClip"><circle cx="50" cy="50" r="43"/></clipPath>
+</defs>
+<symbol id="km-mark" viewBox="0 0 100 100"><circle cx="50" cy="50" r="47.5" fill="none" stroke="url(#kmGold)" stroke-width="2.6"/>
+<circle cx="50" cy="50" r="43.6" fill="none" stroke="url(#kmGold)" stroke-width="1.1"/>
+<g clip-path="url(#kmClip)">
+  <g stroke="url(#kmGold)" stroke-width="0.9"><line x1="50" y1="12" x2="-10.71" y2="102"/><line x1="50" y1="12" x2="13.64" y2="102"/><line x1="50" y1="12" x2="30.87" y2="102"/><line x1="50" y1="12" x2="50.00" y2="102"/><line x1="50" y1="12" x2="69.13" y2="102"/><line x1="50" y1="12" x2="86.36" y2="102"/><line x1="50" y1="12" x2="110.71" y2="102"/><line x1="50" y1="12" x2="-9.09" y2="22.42"/><line x1="50" y1="12" x2="-5.63" y2="34.48"/><line x1="50" y1="12" x2="0.26" y2="45.55"/><line x1="50" y1="12" x2="6.84" y2="53.68"/><line x1="50" y1="12" x2="93.16" y2="53.68"/><line x1="50" y1="12" x2="99.74" y2="45.55"/><line x1="50" y1="12" x2="105.63" y2="34.48"/><line x1="50" y1="12" x2="109.09" y2="22.42"/></g>
+  <line x1="50" y1="12" x2="50" y2="100" stroke="url(#kmGold)" stroke-width="1.6"/>
+  <circle cx="50" cy="7" r="14" fill="url(#kmGold)" stroke="#06070a" stroke-width="1.4"/>
+  <g fill="url(#kmGold)" stroke="#06070a" stroke-width="1" paint-order="stroke"><rect x="22.5" y="30.7" width="4.2" height="14.6" rx="0.4"/><rect x="22.5" y="46.7" width="4.2" height="14.6" rx="0.4"/><rect x="22.5" y="62.7" width="4.2" height="14.6" rx="0.4"/><rect x="22.5" y="78.7" width="4.2" height="16.6" rx="0.4"/><rect x="14.5" y="54.7" width="3.2" height="12.6" rx="0.4"/><rect x="14.5" y="68.7" width="3.2" height="11.6" rx="0.4"/><rect x="14.5" y="81.7" width="3.2" height="9.6" rx="0.4"/><path d="M0,0 L4,-1.6 L15,0 L4,1.6 Z" transform="translate(25,33) rotate(-118) scale(1.25)"/><path d="M0,0 L4,-1.6 L15,0 L4,1.6 Z" transform="translate(25,33) rotate(-62) scale(1.05)"/><path d="M0,0 L4,-1.6 L15,0 L4,1.6 Z" transform="translate(26,37) rotate(-28) scale(1.2)"/><path d="M0,0 L4,-1.6 L15,0 L4,1.6 Z" transform="translate(24,40) rotate(-150) scale(1.0)"/><path d="M0,0 L4,-1.6 L15,0 L4,1.6 Z" transform="translate(26,50) rotate(22) scale(1.25)"/><path d="M0,0 L4,-1.6 L15,0 L4,1.6 Z" transform="translate(26,50) rotate(-12) scale(1.0)"/><path d="M0,0 L4,-1.6 L15,0 L4,1.6 Z" transform="translate(23,53) rotate(150) scale(1.1)"/><path d="M0,0 L4,-1.6 L15,0 L4,1.6 Z" transform="translate(16,58) rotate(-105) scale(0.95)"/><path d="M0,0 L4,-1.6 L15,0 L4,1.6 Z" transform="translate(27,58) rotate(55) scale(0.95)"/></g>
+  <g fill="url(#kmGold)" stroke="#06070a" stroke-width="1" paint-order="stroke" transform="translate(100,0) scale(-1,1)"><rect x="22.5" y="30.7" width="4.2" height="14.6" rx="0.4"/><rect x="22.5" y="46.7" width="4.2" height="14.6" rx="0.4"/><rect x="22.5" y="62.7" width="4.2" height="14.6" rx="0.4"/><rect x="22.5" y="78.7" width="4.2" height="16.6" rx="0.4"/><rect x="14.5" y="54.7" width="3.2" height="12.6" rx="0.4"/><rect x="14.5" y="68.7" width="3.2" height="11.6" rx="0.4"/><rect x="14.5" y="81.7" width="3.2" height="9.6" rx="0.4"/><path d="M0,0 L4,-1.6 L15,0 L4,1.6 Z" transform="translate(25,33) rotate(-118) scale(1.25)"/><path d="M0,0 L4,-1.6 L15,0 L4,1.6 Z" transform="translate(25,33) rotate(-62) scale(1.05)"/><path d="M0,0 L4,-1.6 L15,0 L4,1.6 Z" transform="translate(26,37) rotate(-28) scale(1.2)"/><path d="M0,0 L4,-1.6 L15,0 L4,1.6 Z" transform="translate(24,40) rotate(-150) scale(1.0)"/><path d="M0,0 L4,-1.6 L15,0 L4,1.6 Z" transform="translate(26,50) rotate(22) scale(1.25)"/><path d="M0,0 L4,-1.6 L15,0 L4,1.6 Z" transform="translate(26,50) rotate(-12) scale(1.0)"/><path d="M0,0 L4,-1.6 L15,0 L4,1.6 Z" transform="translate(23,53) rotate(150) scale(1.1)"/><path d="M0,0 L4,-1.6 L15,0 L4,1.6 Z" transform="translate(16,58) rotate(-105) scale(0.95)"/><path d="M0,0 L4,-1.6 L15,0 L4,1.6 Z" transform="translate(27,58) rotate(55) scale(0.95)"/></g>
+  <path d="M9,63 L17,61.5 L22,62.5 L29,60 L35,61 L41,58.5 L47,60.5 L52,56.5 L58,55 L63,52.5 L67,53 L72,49 L77,47.5 L81,45 L86,42 L92,39" fill="none" stroke="#06070a" stroke-width="2.2" stroke-linejoin="round"/>
+  <path d="M9,63 L17,61.5 L22,62.5 L29,60 L35,61 L41,58.5 L47,60.5 L52,56.5 L58,55 L63,52.5 L67,53 L72,49 L77,47.5 L81,45 L86,42 L92,39 M77,47.5 L81,50 L87,51.5" fill="none" stroke="#ffd877" stroke-width="0.85" stroke-linejoin="round" stroke-linecap="round"/>
+</g></symbol>
+  </svg>
+
   <!-- Entry Gate (particle constellation) — INITIALIZE starts the boot sequence -->
   <div id="entry-gate" class="fixed inset-0 z-50 bg-void flex flex-col items-center justify-center p-6 transition-opacity duration-500">
     <canvas id="gate-canvas" class="absolute inset-0 w-full h-full pointer-events-none"></canvas>
     <div class="relative z-10 max-w-xl w-full text-center space-y-6 bg-panel/75 backdrop-blur-md border border-gold/30 rounded-2xl p-7 sm:p-10 shadow-2xl">
+      <svg class="km-gate" width="112" height="112" role="img" aria-label="KOMOREBI mark"><use href="#km-mark"/></svg>
       <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gold/10 border border-gold/30 font-mono text-[11px] text-gold">
         <span class="w-1.5 h-1.5 rounded-full bg-gold animate-pulse"></span>
         <span>STANDBY · <span id="gate-clock">00:00:00 UTC</span></span>
@@ -116,6 +143,7 @@
 
   <!-- Boot Screen (real capability + network checks) -->
   <div id="boot-screen" class="hidden fixed inset-0 z-50 bg-void flex flex-col p-4 sm:p-8 transition-opacity duration-500 cursor-pointer select-none">
+    <div class="km-boot"><svg width="48" height="48" aria-hidden="true"><use href="#km-mark"/></svg></div>
     <div id="boot-log" class="flex-1 overflow-y-auto font-mono text-[11px] sm:text-xs leading-relaxed space-y-0.5 max-w-4xl w-full mx-auto break-all whitespace-pre-wrap"></div>
     <div class="max-w-4xl w-full mx-auto pt-3 font-mono text-[10px] text-zinc-600 flex justify-between">
       <span>tap or press any key to skip</span>
@@ -130,11 +158,8 @@
   <header class="sticky top-0 z-40 border-b border-zinc-800/80 bg-void/90 backdrop-blur-md">
     <div class="max-w-7xl mx-auto px-3 sm:px-6 h-14 flex items-center justify-between gap-2">
       <div class="flex items-center gap-2.5 shrink-0">
-        <button id="kintsugi-reload-btn" title="Re-run boot diagnostics" class="group relative w-8 h-8 rounded-md border border-gold/40 bg-panel flex items-center justify-center hover:border-gold transition-colors">
-          <svg viewBox="0 0 24 24" class="w-4 h-4 text-gold group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M4 4L10 11L7 15L14 20" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M14 4L11 9L17 13L20 20" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.55"/>
-          </svg>
+        <button id="kintsugi-reload-btn" title="Re-run boot diagnostics" class="group relative w-9 h-9 flex items-center justify-center rounded-full hover:drop-shadow-[0_0_8px_rgba(229,184,75,0.55)] transition-all">
+          <svg width="34" height="34" class="group-hover:scale-105 transition-transform" role="img" aria-label="KOMOREBI mark"><use href="#km-mark"/></svg>
         </button>
         <div>
           <div class="font-mono text-xs sm:text-sm font-bold tracking-wider text-zinc-100 flex items-center gap-1.5">
