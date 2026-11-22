@@ -1,0 +1,1759 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KOMOREBI // SHELL — Signal Observatory, Live Telemetry, Infinite Wall &amp; Forensics</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
+  <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+  <script>
+    if (window.tailwind) tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+          },
+          colors: {
+            void: '#06070a',
+            panel: '#0c0e14',
+            panelLight: '#12151f',
+            gold: '#e5b84b',
+            goldDim: '#9a7828',
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    :root { color-scheme: dark; }
+    #entry-gate { position: fixed; inset: 0; z-index: 50; background: #06070a; display: flex; align-items: center; justify-content: center; }
+    #entry-gate.hidden { display: none; }
+    #gate-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+    #entry-gate > div { position: relative; z-index: 10; max-width: 36rem; width: calc(100% - 3rem); text-align: center; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; }
+    #enter-shell-btn { background: #e5b84b; color: #06070a; font-weight: 700; padding: 12px 24px; border: 0; border-radius: 8px; cursor: pointer; }
+    /* Boot screen styled without Tailwind so it renders even if the CDN fails */
+    #boot-screen { position: fixed; inset: 0; z-index: 60; background: #06070a; display: flex; flex-direction: column; padding: 16px; font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace; transition: opacity .5s; cursor: pointer; }
+    #boot-screen.hidden { display: none; }
+    #boot-log { flex: 1; overflow-y: auto; font-size: 11px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; color: #a1a1aa; max-width: 56rem; width: 100%; margin: 0 auto; }
+    #boot-screen > div:last-child { max-width: 56rem; width: 100%; margin: 0 auto; padding-top: 12px; font-size: 10px; color: #52525b; display: flex; justify-content: space-between; }
+    @media (min-width: 640px) { #boot-screen { padding: 32px; } #boot-log { font-size: 12px; } }
+    #boot-log .text-emerald-400 { color: #34d399; } #boot-log .text-amber-300 { color: #fcd34d; } #boot-log .text-red-400 { color: #f87171; }
+    #boot-log .text-gold { color: #e5b84b; } #boot-log .text-zinc-200 { color: #e4e4e7; } #boot-log .text-zinc-500 { color: #71717a; } #boot-log .font-bold { font-weight: 700; }
+    body {
+      background-color: #06070a;
+      color: #e4e4e7;
+      font-family: 'Inter', system-ui, sans-serif;
+      overflow-x: hidden;
+    }
+    .font-mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+    .bg-grid-pattern {
+      background-image:
+        linear-gradient(to right, rgba(229, 184, 75, 0.04) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(229, 184, 75, 0.04) 1px, transparent 1px);
+      background-size: 32px 32px;
+    }
+    .kintsugi-border {
+      border: 1px solid rgba(229, 184, 75, 0.24);
+      box-shadow: 0 0 28px rgba(229, 184, 75, 0.05);
+    }
+    .kintsugi-glow { text-shadow: 0 0 14px rgba(229, 184, 75, 0.5); }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #06070a; }
+    ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #e5b84b; }
+    @keyframes pulse-ring {
+      0% { transform: scale(0.6); opacity: 0.9; }
+      100% { transform: scale(2.8); opacity: 0; }
+    }
+    .threat-pulse {
+      transform-box: fill-box;
+      transform-origin: center;
+      animation: pulse-ring 1.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+    }
+    @keyframes dash-flow { to { stroke-dashoffset: -40; } }
+    .arc-animate {
+      stroke-dasharray: 6 4;
+      animation: dash-flow 1.2s linear infinite;
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-void bg-grid-pattern text-zinc-200 flex flex-col">
+
+  <!-- Entry Gate (particle constellation) — INITIALIZE starts the boot sequence -->
+  <div id="entry-gate" class="fixed inset-0 z-50 bg-void flex flex-col items-center justify-center p-6 transition-opacity duration-500">
+    <canvas id="gate-canvas" class="absolute inset-0 w-full h-full pointer-events-none"></canvas>
+    <div class="relative z-10 max-w-xl w-full text-center space-y-6 bg-panel/75 backdrop-blur-md border border-gold/30 rounded-2xl p-7 sm:p-10 shadow-2xl">
+      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gold/10 border border-gold/30 font-mono text-[11px] text-gold">
+        <span class="w-1.5 h-1.5 rounded-full bg-gold animate-pulse"></span>
+        <span>STANDBY · <span id="gate-clock">00:00:00 UTC</span></span>
+      </div>
+      <div class="space-y-2">
+        <h1 class="font-mono text-2xl sm:text-4xl font-bold tracking-wider text-zinc-100">
+          KOMOREBI <span class="text-gold">//</span> <span class="text-gold kintsugi-glow">SHELL</span>
+        </h1>
+        <p class="font-mono text-xs sm:text-sm text-zinc-400 leading-relaxed">
+          "sunlight filtering through static."<br/>
+          Morse &amp; cipher lab · Live quake &amp; ISS telemetry · Infinite text wall · OSINT &amp; forensics lab.
+        </p>
+      </div>
+      <div class="flex items-center justify-center pt-2">
+        <button id="enter-shell-btn" class="w-full sm:w-auto px-6 py-3 rounded-lg bg-gold text-void font-mono text-xs font-bold tracking-wider hover:bg-amber-300 transition-all shadow-lg shadow-gold/20">
+          [ INITIALIZE SHELL ]
+        </button>
+      </div>
+      <div class="font-mono text-[10px] text-zinc-500">
+        Press ENTER or tap above · Ctrl+K opens CLI anywhere
+      </div>
+    </div>
+  </div>
+
+  <!-- Boot Screen (real capability + network checks) -->
+  <div id="boot-screen" class="hidden fixed inset-0 z-50 bg-void flex flex-col p-4 sm:p-8 transition-opacity duration-500 cursor-pointer select-none">
+    <div id="boot-log" class="flex-1 overflow-y-auto font-mono text-[11px] sm:text-xs leading-relaxed space-y-0.5 max-w-4xl w-full mx-auto break-all whitespace-pre-wrap"></div>
+    <div class="max-w-4xl w-full mx-auto pt-3 font-mono text-[10px] text-zinc-600 flex justify-between">
+      <span>tap or press any key to skip</span>
+      <span id="boot-progress"></span>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast-container" class="fixed bottom-14 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- Top Navigation Shell -->
+  <header class="sticky top-0 z-40 border-b border-zinc-800/80 bg-void/90 backdrop-blur-md">
+    <div class="max-w-7xl mx-auto px-3 sm:px-6 h-14 flex items-center justify-between gap-2">
+      <div class="flex items-center gap-2.5 shrink-0">
+        <button id="kintsugi-reload-btn" title="Re-run boot diagnostics" class="group relative w-8 h-8 rounded-md border border-gold/40 bg-panel flex items-center justify-center hover:border-gold transition-colors">
+          <svg viewBox="0 0 24 24" class="w-4 h-4 text-gold group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 4L10 11L7 15L14 20" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M14 4L11 9L17 13L20 20" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.55"/>
+          </svg>
+        </button>
+        <div>
+          <div class="font-mono text-xs sm:text-sm font-bold tracking-wider text-zinc-100 flex items-center gap-1.5">
+            <span>KOMOREBI</span>
+            <span class="text-gold">//</span>
+            <span class="text-gold kintsugi-glow">SHELL</span>
+          </div>
+          <div class="hidden sm:block font-mono text-[10px] text-zinc-500 tracking-widest uppercase">
+            <span id="utc-clock">00:00:00 UTC</span>
+          </div>
+        </div>
+      </div>
+
+      <nav class="hidden lg:flex items-center gap-1 bg-panel/90 p-1 rounded-lg border border-zinc-800" aria-label="Primary modules">
+        <button data-tab="broadcast" class="tab-btn px-2.5 py-1.5 rounded-md font-mono text-xs font-medium transition-all flex items-center gap-1.5">
+          <span class="opacity-70">01</span> SIGNAL
+        </button>
+        <button data-tab="threatmap" class="tab-btn px-2.5 py-1.5 rounded-md font-mono text-xs font-medium transition-all flex items-center gap-1.5">
+          <span class="opacity-70">02</span> THREAT MAP
+        </button>
+        <button data-tab="textwall" class="tab-btn px-2.5 py-1.5 rounded-md font-mono text-xs font-medium transition-all flex items-center gap-1.5">
+          <span class="opacity-70">03</span> TEXT WALL
+        </button>
+        <button data-tab="dorklab" class="tab-btn px-2.5 py-1.5 rounded-md font-mono text-xs font-medium transition-all flex items-center gap-1.5">
+          <span class="opacity-70">04</span> DORK LAB
+        </button>
+        <button data-tab="forensics" class="tab-btn px-2.5 py-1.5 rounded-md font-mono text-xs font-medium transition-all flex items-center gap-1.5">
+          <span class="opacity-70">05</span> FORENSICS
+        </button>
+      </nav>
+
+      <div class="flex items-center gap-2 shrink-0">
+        <button id="cli-toggle-btn" class="px-2.5 py-1.5 rounded-md border border-zinc-800 bg-panel hover:border-gold/50 font-mono text-xs text-zinc-300 flex items-center gap-1.5 transition-colors" title="Open interactive CLI (Ctrl+K)">
+          <i data-lucide="terminal" class="w-3.5 h-3.5 text-gold"></i>
+          <span class="hidden sm:inline">CLI</span>
+        </button>
+        <button id="mobile-menu-btn" class="lg:hidden p-1.5 rounded-md border border-zinc-800 bg-panel text-zinc-300 hover:border-gold/50" aria-label="Toggle navigation">
+          <i data-lucide="menu" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </div>
+
+    <div id="mobile-nav" class="hidden lg:hidden border-t border-zinc-800 bg-panel px-3 py-2 grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+      <button data-tab="broadcast" class="tab-btn-mobile px-3 py-2 rounded font-mono text-xs text-left border border-zinc-800">01 // SIGNAL</button>
+      <button data-tab="threatmap" class="tab-btn-mobile px-3 py-2 rounded font-mono text-xs text-left border border-zinc-800">02 // THREAT MAP</button>
+      <button data-tab="textwall" class="tab-btn-mobile px-3 py-2 rounded font-mono text-xs text-left border border-zinc-800">03 // TEXT WALL</button>
+      <button data-tab="dorklab" class="tab-btn-mobile px-3 py-2 rounded font-mono text-xs text-left border border-zinc-800">04 // DORK LAB</button>
+      <button data-tab="forensics" class="tab-btn-mobile px-3 py-2 rounded font-mono text-xs text-left border border-zinc-800">05 // FORENSICS</button>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-4 sm:py-6 pb-20">
+
+    <!-- ========================================================= -->
+    <!-- MODULE 01: SIGNAL (Morse synth, scope & cipher lab)       -->
+    <!-- ========================================================= -->
+    <section id="panel-broadcast" class="module-panel space-y-5">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div class="rounded-xl border border-zinc-800 bg-panel p-5 space-y-4">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <i data-lucide="radio" class="w-4 h-4 text-gold"></i>
+              <h2 class="font-mono text-sm font-semibold text-zinc-100">MORSE &amp; CARRIER SYNTHESIZER</h2>
+            </div>
+            <span class="font-mono text-[11px] text-zinc-500">WEB AUDIO API</span>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label for="synth-freq" class="block font-mono text-[11px] text-zinc-400 mb-1">CARRIER FREQ: <span id="synth-freq-val" class="text-gold">528 Hz</span></label>
+              <input id="synth-freq" type="range" min="110" max="880" value="528" class="w-full accent-amber-400 cursor-pointer" />
+            </div>
+            <div>
+              <label for="synth-wave" class="block font-mono text-[11px] text-zinc-400 mb-1">WAVEFORM</label>
+              <select id="synth-wave" class="w-full bg-void border border-zinc-700 rounded-md px-2.5 py-1.5 font-mono text-xs text-zinc-200 focus:outline-none focus:border-gold">
+                <option value="sine">Sine (Pure Carrier)</option>
+                <option value="triangle">Triangle (Warm)</option>
+                <option value="sawtooth">Sawtooth (Harsh)</option>
+                <option value="square">Square (Digital)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="space-y-2">
+            <label for="morse-plain" class="block font-mono text-[11px] text-zinc-400">PLAIN TEXT → MORSE</label>
+            <textarea id="morse-plain" rows="2" placeholder="Type text to encode into Morse..." class="w-full bg-void border border-zinc-700 rounded-lg p-2.5 font-mono text-xs text-zinc-100 focus:outline-none focus:border-gold">KOMOREBI SHELL</textarea>
+          </div>
+
+          <div class="space-y-2">
+            <div class="flex items-center justify-between">
+              <label for="morse-code" class="font-mono text-[11px] text-zinc-400">MORSE CODE (EDIT TO DECODE)</label>
+              <button id="copy-morse-btn" class="font-mono text-[11px] text-gold hover:underline">COPY MORSE</button>
+            </div>
+            <textarea id="morse-code" rows="2" placeholder=".- -... -.-." class="w-full bg-void border border-zinc-700 rounded-lg p-2.5 font-mono text-xs text-emerald-400 focus:outline-none focus:border-gold"></textarea>
+          </div>
+
+          <div class="rounded-lg border border-zinc-800 bg-void p-2">
+            <div class="flex items-center justify-between font-mono text-[10px] text-zinc-500 mb-1">
+              <span>OUTPUT SCOPE</span>
+              <span class="text-gold">TIME DOMAIN</span>
+            </div>
+            <canvas id="audio-scope" class="w-full h-14 block rounded"></canvas>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2 pt-1">
+            <button id="play-morse-btn" class="px-3.5 py-2 rounded-lg bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/25 font-mono text-xs font-medium flex items-center gap-1.5 transition-colors">
+              <i data-lucide="play" class="w-3.5 h-3.5"></i>
+              TRANSMIT MORSE AUDIO
+            </button>
+            <button id="stop-morse-btn" class="px-3 py-2 rounded-lg border border-zinc-700 bg-panelLight hover:border-zinc-500 font-mono text-xs text-zinc-300">
+              STOP
+            </button>
+          </div>
+        </div>
+
+        <div class="rounded-xl border border-zinc-800 bg-panel p-5 space-y-4">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <i data-lucide="key-round" class="w-4 h-4 text-gold"></i>
+              <h2 class="font-mono text-sm font-semibold text-zinc-100">CRYPTOGRAPHIC HASH &amp; CIPHER LAB</h2>
+            </div>
+            <span class="font-mono text-[11px] text-zinc-500">SHA-256 / B64 / HEX</span>
+          </div>
+
+          <div>
+            <label for="cipher-input" class="block font-mono text-[11px] text-zinc-400 mb-1">INPUT PAYLOAD</label>
+            <textarea id="cipher-input" rows="2" placeholder="Enter string to hash or encode..." class="w-full bg-void border border-zinc-700 rounded-lg p-2.5 font-mono text-xs text-zinc-100 focus:outline-none focus:border-gold">hello world</textarea>
+          </div>
+
+          <div class="flex flex-wrap gap-1.5">
+            <button data-cipher="sha256" class="cipher-action-btn px-2.5 py-1.5 rounded bg-panelLight border border-zinc-700 hover:border-gold font-mono text-[11px] text-zinc-200">SHA-256</button>
+            <button data-cipher="sha1" class="cipher-action-btn px-2.5 py-1.5 rounded bg-panelLight border border-zinc-700 hover:border-gold font-mono text-[11px] text-zinc-200">SHA-1</button>
+            <button data-cipher="b64enc" class="cipher-action-btn px-2.5 py-1.5 rounded bg-panelLight border border-zinc-700 hover:border-gold font-mono text-[11px] text-zinc-200">Base64 Encode</button>
+            <button data-cipher="b64dec" class="cipher-action-btn px-2.5 py-1.5 rounded bg-panelLight border border-zinc-700 hover:border-gold font-mono text-[11px] text-zinc-200">Base64 Decode</button>
+            <button data-cipher="hexenc" class="cipher-action-btn px-2.5 py-1.5 rounded bg-panelLight border border-zinc-700 hover:border-gold font-mono text-[11px] text-zinc-200">Hex Encode</button>
+            <button data-cipher="rot13" class="cipher-action-btn px-2.5 py-1.5 rounded bg-panelLight border border-zinc-700 hover:border-gold font-mono text-[11px] text-zinc-200">ROT13</button>
+          </div>
+
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between">
+              <span id="cipher-output-label" class="font-mono text-[11px] text-zinc-400">OUTPUT (SHA-256)</span>
+              <button id="copy-cipher-btn" class="font-mono text-[11px] text-gold hover:underline">COPY OUTPUT</button>
+            </div>
+            <div id="cipher-output" class="w-full min-h-[56px] bg-void border border-zinc-800 rounded-lg p-2.5 font-mono text-xs text-cyan-300 break-all select-all"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================= -->
+    <!-- MODULE 02: TELEMETRY (Cyber + Live USGS Quakes + ISS)     -->
+    <!-- ========================================================= -->
+    <section id="panel-threatmap" class="module-panel hidden space-y-5">
+      <div class="rounded-xl border border-zinc-800 bg-panel overflow-hidden">
+        <div class="px-4 py-3 border-b border-zinc-800 flex flex-wrap items-center justify-between gap-3">
+          <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
+              <h2 class="font-mono text-sm font-bold text-zinc-100">GLOBAL TELEMETRY</h2>
+            </div>
+            <div class="font-mono text-xs text-zinc-400">
+              <span id="attack-counter" class="text-gold font-bold">—</span> <span id="telemetry-unit">quakes (24h)</span>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-1.5">
+            <!-- Planetary Layer Switcher (real feeds only) -->
+            <button data-layer="quakes" class="map-layer-btn px-2.5 py-1 rounded font-mono text-[11px] bg-gold text-void font-bold">LIVE QUAKES</button>
+            <button data-layer="iss" class="map-layer-btn px-2.5 py-1 rounded font-mono text-[11px] bg-panelLight border border-zinc-700 text-zinc-300">LIVE ISS</button>
+            <button id="map-refresh-btn" class="px-2.5 py-1 rounded font-mono text-[11px] bg-panelLight border border-zinc-700 text-zinc-200 hover:border-gold">REFRESH</button>
+            <span id="map-updated" class="font-mono text-[10px] text-zinc-500"></span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-4">
+          <div class="lg:col-span-3 relative bg-void min-h-[320px] sm:min-h-[420px] flex items-center justify-center">
+            <div id="map-loading" class="font-mono text-xs text-zinc-500 flex items-center gap-2">
+              <i data-lucide="globe" class="w-4 h-4 animate-spin text-gold"></i>
+              Loading global vector topology...
+            </div>
+            <svg id="threat-svg" class="w-full h-[320px] sm:h-[420px] hidden"></svg>
+            <div id="node-inspector-badge" class="hidden absolute bottom-3 left-3 bg-panel/95 border border-gold/40 rounded-lg px-3 py-2 font-mono text-xs max-w-xs backdrop-blur">
+              <div class="flex items-center justify-between gap-4">
+                <span id="inspected-country" class="font-bold text-gold"></span>
+                <button id="close-node-badge" class="text-zinc-500 hover:text-zinc-200">×</button>
+              </div>
+              <div id="inspected-stats" class="text-[11px] text-zinc-300 mt-1"></div>
+            </div>
+          </div>
+
+          <div class="border-t lg:border-t-0 lg:border-l border-zinc-800 bg-panel/70 p-3 flex flex-col h-[320px] sm:h-[420px]">
+            <div class="font-mono text-[11px] text-zinc-400 uppercase tracking-wider mb-2 flex items-center justify-between">
+              <span id="feed-title">USGS SEISMIC M2.5+</span>
+              <span class="text-emerald-400">LIVE</span>
+            </div>
+            <div id="threat-feed" class="flex-1 overflow-y-auto space-y-1.5 font-mono text-[11px] pr-1"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Edge Latency Probe + DoH + CIDR -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <!-- Real Browser Edge Latency Probe -->
+        <div class="rounded-xl border border-zinc-800 bg-panel p-5 space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <i data-lucide="activity" class="w-4 h-4 text-gold"></i>
+              <h3 class="font-mono text-sm font-semibold text-zinc-100">EDGE LATENCY PROBE</h3>
+            </div>
+            <button id="run-latency-btn" class="px-2.5 py-1 rounded bg-gold text-void font-mono text-[11px] font-bold hover:bg-amber-300">PING</button>
+          </div>
+          <div id="latency-results" class="space-y-2 font-mono text-xs bg-void border border-zinc-800 rounded-lg p-3">
+            Click PING to measure live HTTPS round-trip latency from your browser.
+          </div>
+        </div>
+
+        <!-- Live DNS-over-HTTPS Lookup -->
+        <div class="rounded-xl border border-zinc-800 bg-panel p-5 space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <i data-lucide="search-check" class="w-4 h-4 text-gold"></i>
+              <h3 class="font-mono text-sm font-semibold text-zinc-100">LIVE DNS RESOLVER</h3>
+            </div>
+            <span class="font-mono text-[10px] text-emerald-400 border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 rounded">REAL API</span>
+          </div>
+
+          <form id="dns-form" class="flex flex-col sm:flex-row gap-2">
+            <input id="dns-domain" type="text" value="cloudflare.com" placeholder="domain.com" class="flex-1 bg-void border border-zinc-700 rounded-lg px-3 py-2 font-mono text-xs text-zinc-100 focus:outline-none focus:border-gold" />
+            <select id="dns-type" class="bg-void border border-zinc-700 rounded-lg px-2 py-2 font-mono text-xs text-zinc-200 focus:outline-none focus:border-gold">
+              <option value="A">A</option>
+              <option value="AAAA">AAAA</option>
+              <option value="MX">MX</option>
+              <option value="TXT">TXT</option>
+              <option value="NS">NS</option>
+            </select>
+            <button type="submit" class="px-3.5 py-2 rounded-lg bg-gold text-void font-mono text-xs font-bold hover:bg-amber-300 transition-colors">RESOLVE</button>
+          </form>
+
+          <div id="dns-results" class="bg-void border border-zinc-800 rounded-lg p-3 font-mono text-xs text-zinc-300 min-h-[100px] max-h-44 overflow-y-auto">
+            Query live Cloudflare DoH records.
+          </div>
+        </div>
+
+        <!-- Real IPv4 CIDR / Subnet Calculator -->
+        <div class="rounded-xl border border-zinc-800 bg-panel p-5 space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <i data-lucide="network" class="w-4 h-4 text-gold"></i>
+              <h3 class="font-mono text-sm font-semibold text-zinc-100">CIDR CALCULATOR</h3>
+            </div>
+            <span class="font-mono text-[10px] text-zinc-400">BITMATH</span>
+          </div>
+
+          <form id="cidr-form" class="flex gap-2">
+            <input id="cidr-input" type="text" value="10.42.0.15/20" placeholder="192.168.1.0/24" class="flex-1 bg-void border border-zinc-700 rounded-lg px-3 py-2 font-mono text-xs text-zinc-100 focus:outline-none focus:border-gold" />
+            <button type="submit" class="px-3.5 py-2 rounded-lg bg-panelLight border border-gold/50 text-gold font-mono text-xs font-bold hover:bg-gold hover:text-void transition-colors">CALCULATE</button>
+          </form>
+
+          <div id="cidr-results" class="grid grid-cols-2 gap-2 bg-void border border-zinc-800 rounded-lg p-3 font-mono text-xs"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================= -->
+    <!-- MODULE 03: INFINITE TEXT WALL + IMAGE-TO-ASCII STAMPER    -->
+    <!-- ========================================================= -->
+    <section id="panel-textwall" class="module-panel hidden space-y-4">
+      <div class="rounded-xl border border-zinc-800 bg-panel p-3 sm:p-4 space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="font-mono text-xs font-bold text-gold">WALL COORDS:</span>
+            <span id="wall-coords" class="font-mono text-xs bg-void border border-zinc-700 px-2 py-1 rounded text-emerald-400">(0, 0)</span>
+            <div class="flex items-center gap-1 ml-1">
+              <span class="font-mono text-[11px] text-zinc-500 hidden sm:inline">INK:</span>
+              <button data-color="#e5b84b" class="wall-color-btn w-5 h-5 rounded-full bg-[#e5b84b] ring-2 ring-white" title="Gold"></button>
+              <button data-color="#e4e4e7" class="wall-color-btn w-5 h-5 rounded-full bg-[#e4e4e7]" title="White"></button>
+              <button data-color="#34d399" class="wall-color-btn w-5 h-5 rounded-full bg-[#34d399]" title="Emerald"></button>
+              <button data-color="#22d3ee" class="wall-color-btn w-5 h-5 rounded-full bg-[#22d3ee]" title="Cyan"></button>
+              <button data-color="#f87171" class="wall-color-btn w-5 h-5 rounded-full bg-[#f87171]" title="Crimson"></button>
+              <button data-color="#c084fc" class="wall-color-btn w-5 h-5 rounded-full bg-[#c084fc]" title="Violet"></button>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-1.5">
+            <button data-jump="0,0" class="wall-jump-btn px-2 py-1 rounded bg-panelLight border border-zinc-700 hover:border-gold font-mono text-[11px]">Origin (0,0)</button>
+            <button id="wall-stamp-btn" class="px-2.5 py-1 rounded bg-gold/15 border border-gold/40 text-gold hover:bg-gold/25 font-mono text-[11px]">STAMP ART</button>
+            <label for="wall-ascii-img" class="px-2.5 py-1 rounded bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/25 font-mono text-[11px] cursor-pointer">
+              IMG → ASCII
+              <input id="wall-ascii-img" type="file" accept="image/*" class="hidden" />
+            </label>
+            <button id="wall-export-btn" class="px-2.5 py-1 rounded bg-panelLight border border-zinc-700 hover:border-zinc-500 font-mono text-[11px]">EXPORT JSON</button>
+            <button id="wall-reset-btn" class="px-2.5 py-1 rounded bg-panelLight border border-red-900/50 text-red-400 hover:border-red-500 font-mono text-[11px]">RESET</button>
+          </div>
+        </div>
+
+        <div class="relative rounded-lg border border-zinc-800 bg-void overflow-hidden">
+          <canvas id="text-wall-canvas" tabindex="0" class="w-full h-[380px] sm:h-[460px] block cursor-crosshair focus:outline-none"></canvas>
+          <div class="hidden sm:block absolute top-3 right-3 rounded-lg border border-gold/30 bg-panel/90 p-1.5 backdrop-blur">
+            <div class="font-mono text-[9px] text-zinc-400 mb-1 flex justify-between">
+              <span>RADAR</span>
+              <span class="text-gold">CLICK</span>
+            </div>
+            <canvas id="wall-radar" width="120" height="72" class="block rounded bg-void cursor-pointer"></canvas>
+          </div>
+          <div class="absolute bottom-2.5 left-3 pointer-events-none font-mono text-[10px] text-zinc-500 bg-void/80 px-2 py-0.5 rounded border border-zinc-800">
+            Drag to pan · Click cell &amp; type · Arrow keys to move · Auto-saved locally
+          </div>
+        </div>
+
+        <form id="wall-quick-form" class="flex gap-2">
+          <input id="wall-quick-input" type="text" placeholder="Type here and press Write to stamp at selected cell (great on mobile)..." class="flex-1 bg-void border border-zinc-700 rounded-lg px-3 py-2 font-mono text-xs text-zinc-100 focus:outline-none focus:border-gold" />
+          <button type="submit" class="px-4 py-2 rounded-lg bg-gold text-void font-mono text-xs font-bold hover:bg-amber-300 transition-colors">WRITE AT CURSOR</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- ========================================================= -->
+    <!-- MODULE 04: DORK LAB + OSINT PIVOTS                        -->
+    <!-- ========================================================= -->
+    <section id="panel-dorklab" class="module-panel hidden space-y-5">
+      <div class="rounded-xl border border-zinc-800 bg-panel p-5 space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h2 class="font-mono text-base font-bold text-zinc-100 flex items-center gap-2">
+              <i data-lucide="terminal" class="w-4 h-4 text-gold"></i>
+              OSINT DORK GENIUS // QUERY COMPILER
+            </h2>
+            <p class="text-xs text-zinc-400 mt-0.5">Compile legitimate advanced search queries for Google, Bing, DuckDuckGo, and domain OSINT pivots.</p>
+          </div>
+          <span class="font-mono text-[10px] text-zinc-500 border border-zinc-800 px-2 py-1 rounded self-start">EDUCATIONAL &amp; RESEARCH USE</span>
+        </div>
+
+        <div class="flex flex-wrap gap-1.5">
+          <span class="font-mono text-[11px] text-zinc-500 self-center mr-1">PRESETS:</span>
+          <button data-preset="pdfs" class="dork-preset-btn px-2.5 py-1 rounded bg-panelLight border border-zinc-700 hover:border-gold font-mono text-[11px]">Gov/Edu PDFs</button>
+          <button data-preset="opendir" class="dork-preset-btn px-2.5 py-1 rounded bg-panelLight border border-zinc-700 hover:border-gold font-mono text-[11px]">Open Directories</button>
+          <button data-preset="configs" class="dork-preset-btn px-2.5 py-1 rounded bg-panelLight border border-zinc-700 hover:border-gold font-mono text-[11px]">Exposed Env/Logs</button>
+          <button data-preset="buckets" class="dork-preset-btn px-2.5 py-1 rounded bg-panelLight border border-zinc-700 hover:border-gold font-mono text-[11px]">Public Cloud Storage</button>
+          <button data-preset="cameras" class="dork-preset-btn px-2.5 py-1 rounded bg-panelLight border border-zinc-700 hover:border-gold font-mono text-[11px]">IoT / Webcam Index</button>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div>
+            <label for="dork-keywords" class="block font-mono text-[11px] text-zinc-400 mb-1">KEYWORDS / PHRASE</label>
+            <input id="dork-keywords" type="text" value='"index of" "backup"' placeholder='e.g. "confidential" report' class="w-full bg-void border border-zinc-700 rounded-lg px-3 py-2 font-mono text-xs text-zinc-100 focus:outline-none focus:border-gold" />
+          </div>
+          <div>
+            <label for="dork-site" class="block font-mono text-[11px] text-zinc-400 mb-1">SITE / DOMAIN (site:)</label>
+            <input id="dork-site" type="text" value="nasa.gov" placeholder="e.g. nasa.gov or .edu" class="w-full bg-void border border-zinc-700 rounded-lg px-3 py-2 font-mono text-xs text-zinc-100 focus:outline-none focus:border-gold" />
+          </div>
+          <div>
+            <label for="dork-filetype" class="block font-mono text-[11px] text-zinc-400 mb-1">FILETYPE (filetype:)</label>
+            <input id="dork-filetype" type="text" value="pdf" placeholder="pdf, csv, env, sql, log" class="w-full bg-void border border-zinc-700 rounded-lg px-3 py-2 font-mono text-xs text-zinc-100 focus:outline-none focus:border-gold" />
+          </div>
+          <div>
+            <label for="dork-inurl" class="block font-mono text-[11px] text-zinc-400 mb-1">INURL / INTITLE</label>
+            <input id="dork-inurl" type="text" value="" placeholder="e.g. inurl:admin or intitle:index" class="w-full bg-void border border-zinc-700 rounded-lg px-3 py-2 font-mono text-xs text-zinc-100 focus:outline-none focus:border-gold" />
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="flex flex-wrap items-center gap-2">
+            <button id="save-dork-btn" class="px-3.5 py-2 rounded-lg bg-gold text-void font-mono text-xs font-bold hover:bg-amber-300 transition-colors flex items-center gap-1.5">
+              <i data-lucide="bookmark" class="w-3.5 h-3.5"></i>
+              SAVE TO VAULT
+            </button>
+            <button id="clear-dork-btn" class="px-3 py-2 rounded-lg border border-zinc-700 bg-panelLight hover:border-zinc-500 font-mono text-xs text-zinc-300">
+              CLEAR FIELDS
+            </button>
+          </div>
+          <div class="flex flex-wrap items-center gap-1.5 font-mono text-[11px]">
+            <span class="text-zinc-500">DOMAIN PIVOTS:</span>
+            <a id="pivot-crtsh" href="https://crt.sh/?q=nasa.gov" target="_blank" rel="noopener noreferrer" class="px-2.5 py-1 rounded bg-void border border-zinc-700 hover:border-emerald-400 text-emerald-300">crt.sh ↗</a>
+            <a id="pivot-wayback" href="https://web.archive.org/web/*/nasa.gov" target="_blank" rel="noopener noreferrer" class="px-2.5 py-1 rounded bg-void border border-zinc-700 hover:border-amber-400 text-amber-300">Wayback ↗</a>
+            <a id="pivot-rdap" href="https://client.rdap.org/?type=domain&object=nasa.gov" target="_blank" rel="noopener noreferrer" class="px-2.5 py-1 rounded bg-void border border-zinc-700 hover:border-cyan-400 text-cyan-300">RDAP ↗</a>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+          <div class="rounded-lg border border-zinc-800 bg-void p-4 flex flex-col justify-between gap-3">
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <span class="font-mono text-xs font-bold text-zinc-100">GOOGLE DORK</span>
+                <span class="font-mono text-[10px] text-emerald-400">FULL OPERATORS</span>
+              </div>
+              <code id="out-google" class="block font-mono text-xs text-amber-300 break-all bg-panel p-2.5 rounded border border-zinc-800 min-h-[52px]"></code>
+            </div>
+            <div class="flex gap-2">
+              <button data-copy-target="out-google" class="copy-dork-btn flex-1 py-1.5 rounded border border-zinc-700 hover:border-gold font-mono text-xs text-zinc-200">COPY</button>
+              <a id="link-google" href="https://www.google.com" target="_blank" rel="noopener noreferrer" class="flex-1 py-1.5 rounded bg-gold/15 border border-gold/40 hover:bg-gold/25 font-mono text-xs text-gold text-center">SEARCH ↗</a>
+            </div>
+          </div>
+
+          <div class="rounded-lg border border-zinc-800 bg-void p-4 flex flex-col justify-between gap-3">
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <span class="font-mono text-xs font-bold text-zinc-100">BING DORK</span>
+                <span class="font-mono text-[10px] text-cyan-400">CONTAINS / SITE</span>
+              </div>
+              <code id="out-bing" class="block font-mono text-xs text-cyan-300 break-all bg-panel p-2.5 rounded border border-zinc-800 min-h-[52px]"></code>
+            </div>
+            <div class="flex gap-2">
+              <button data-copy-target="out-bing" class="copy-dork-btn flex-1 py-1.5 rounded border border-zinc-700 hover:border-gold font-mono text-xs text-zinc-200">COPY</button>
+              <a id="link-bing" href="https://www.bing.com" target="_blank" rel="noopener noreferrer" class="flex-1 py-1.5 rounded bg-cyan-500/15 border border-cyan-500/40 hover:bg-cyan-500/25 font-mono text-xs text-cyan-300 text-center">SEARCH ↗</a>
+            </div>
+          </div>
+
+          <div class="rounded-lg border border-zinc-800 bg-void p-4 flex flex-col justify-between gap-3">
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <span class="font-mono text-xs font-bold text-zinc-100">DUCKDUCKGO DORK</span>
+                <span class="font-mono text-[10px] text-purple-400">PRIVACY ENGINE</span>
+              </div>
+              <code id="out-ddg" class="block font-mono text-xs text-purple-300 break-all bg-panel p-2.5 rounded border border-zinc-800 min-h-[52px]"></code>
+            </div>
+            <div class="flex gap-2">
+              <button data-copy-target="out-ddg" class="copy-dork-btn flex-1 py-1.5 rounded border border-zinc-700 hover:border-gold font-mono text-xs text-zinc-200">COPY</button>
+              <a id="link-ddg" href="https://duckduckgo.com" target="_blank" rel="noopener noreferrer" class="flex-1 py-1.5 rounded bg-purple-500/15 border border-purple-500/40 hover:bg-purple-500/25 font-mono text-xs text-purple-300 text-center">SEARCH ↗</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="rounded-xl border border-zinc-800 bg-panel p-5 space-y-3">
+        <div class="flex items-center justify-between">
+          <h3 class="font-mono text-sm font-semibold text-zinc-100">SAVED DORKS VAULT</h3>
+          <span id="saved-dorks-count" class="font-mono text-xs text-zinc-500">0 saved</span>
+        </div>
+        <div id="saved-dorks-list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5"></div>
+      </div>
+    </section>
+
+    <!-- ========================================================= -->
+    <!-- MODULE 05: FORENSICS (Entropy, URL, Stego, Dead Drop)      -->
+    <!-- ========================================================= -->
+    <section id="panel-forensics" class="module-panel hidden space-y-5">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <!-- File Magic-Byte & Shannon Entropy Inspector -->
+        <div class="rounded-xl border border-zinc-800 bg-panel p-5 space-y-4">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <i data-lucide="file-search" class="w-4 h-4 text-gold"></i>
+              <h2 class="font-mono text-sm font-semibold text-zinc-100">FILE MAGIC-BYTE &amp; ENTROPY LAB</h2>
+            </div>
+            <span class="font-mono text-[10px] text-zinc-500">100% LOCAL</span>
+          </div>
+
+          <label for="file-probe-input" class="block border-2 border-dashed border-zinc-700 hover:border-gold/60 rounded-lg p-4 text-center cursor-pointer bg-void/60 transition-colors">
+            <input id="file-probe-input" type="file" class="hidden" />
+            <div class="font-mono text-xs text-zinc-300">Click to select any file for local binary inspection</div>
+            <div class="font-mono text-[10px] text-zinc-500 mt-1">Detects true magic bytes, Shannon entropy (0–8 bits), and hex dump</div>
+          </label>
+
+          <div id="file-probe-stats" class="grid grid-cols-3 gap-2 font-mono text-xs bg-void border border-zinc-800 rounded-lg p-3">
+            <div><div class="text-[10px] text-zinc-500">SIGNATURE</div><div id="probe-sig" class="text-gold font-semibold">—</div></div>
+            <div><div class="text-[10px] text-zinc-500">SHANNON ENTROPY</div><div id="probe-entropy" class="text-cyan-300 font-semibold">—</div></div>
+            <div><div class="text-[10px] text-zinc-500">SIZE</div><div id="probe-size" class="text-emerald-400 font-semibold">—</div></div>
+          </div>
+
+          <pre id="probe-hexdump" class="bg-void border border-zinc-800 rounded-lg p-3 font-mono text-[11px] text-zinc-400 overflow-x-auto max-h-40">Select a file to inspect its first 256 bytes...</pre>
+        </div>
+
+        <!-- URL Homograph & Tracker Scrubber -->
+        <div class="rounded-xl border border-zinc-800 bg-panel p-5 space-y-4">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <i data-lucide="shield-alert" class="w-4 h-4 text-gold"></i>
+              <h2 class="font-mono text-sm font-semibold text-zinc-100">URL HOMOGRAPH &amp; TRACKER SCRUBBER</h2>
+            </div>
+            <span class="font-mono text-[10px] text-zinc-500">SAFE DISSECT</span>
+          </div>
+
+          <form id="url-scrub-form" class="flex gap-2">
+            <input id="url-scrub-input" type="text" value="https://xn--pple-43d.com/login?utm_source=newsletter&fbclid=IwAR3x9&next=dashboard" placeholder="Paste any suspicious or tracked URL..." class="flex-1 bg-void border border-zinc-700 rounded-lg px-3 py-2 font-mono text-xs text-zinc-100 focus:outline-none focus:border-gold" />
+            <button type="submit" class="px-4 py-2 rounded-lg bg-gold text-void font-mono text-xs font-bold hover:bg-amber-300 transition-colors">INSPECT</button>
+          </form>
+
+          <div id="url-scrub-report" class="space-y-2 bg-void border border-zinc-800 rounded-lg p-3 font-mono text-xs"></div>
+
+          <div class="flex items-center justify-between">
+            <span class="font-mono text-[11px] text-zinc-400">CLEANED URL (TRACKERS STRIPPED)</span>
+            <button id="copy-clean-url-btn" class="font-mono text-[11px] text-gold hover:underline">COPY CLEAN URL</button>
+          </div>
+          <div id="url-clean-out" class="bg-void border border-zinc-800 rounded-lg p-2.5 font-mono text-xs text-emerald-400 break-all"></div>
+        </div>
+
+        <!-- LSB PNG Steganography Studio -->
+        <div class="rounded-xl border border-zinc-800 bg-panel p-5 space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <i data-lucide="eye-off" class="w-4 h-4 text-gold"></i>
+              <h2 class="font-mono text-sm font-semibold text-zinc-100">LSB PNG STEGANOGRAPHY STUDIO</h2>
+            </div>
+            <span class="font-mono text-[10px] text-emerald-400">PIXEL BIT ENCODE</span>
+          </div>
+          <div class="flex flex-wrap gap-2 items-center">
+            <label for="stego-file" class="px-3 py-1.5 rounded bg-panelLight border border-zinc-700 hover:border-gold font-mono text-xs cursor-pointer text-zinc-200">
+              LOAD IMAGE
+              <input id="stego-file" type="file" accept="image/*" class="hidden" />
+            </label>
+            <button id="stego-gen-btn" class="px-3 py-1.5 rounded bg-panelLight border border-zinc-700 hover:border-gold font-mono text-xs text-zinc-300">USE BLANK CARRIER</button>
+            <span id="stego-status" class="font-mono text-[11px] text-zinc-500">No image loaded</span>
+          </div>
+          <input id="stego-secret" type="text" value="hidden message" placeholder="Secret text to hide inside image pixels..." class="w-full bg-void border border-zinc-700 rounded-lg px-3 py-2 font-mono text-xs text-zinc-100 focus:outline-none focus:border-gold" />
+          <div class="flex flex-wrap gap-2">
+            <button id="stego-encode-btn" class="px-3.5 py-2 rounded-lg bg-gold text-void font-mono text-xs font-bold hover:bg-amber-300">HIDE &amp; DOWNLOAD PNG</button>
+            <button id="stego-decode-btn" class="px-3.5 py-2 rounded-lg bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/25 font-mono text-xs font-bold">EXTRACT SECRET</button>
+          </div>
+          <div id="stego-output" class="bg-void border border-zinc-800 rounded-lg p-2.5 font-mono text-xs text-cyan-300 min-h-[40px] break-all">Extracted payload will appear here...</div>
+          <canvas id="stego-canvas" class="hidden"></canvas>
+        </div>
+
+        <!-- Zero-Server AES-GCM Dead Drop -->
+        <div class="rounded-xl border border-zinc-800 bg-panel p-5 space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <i data-lucide="lock" class="w-4 h-4 text-gold"></i>
+              <h2 class="font-mono text-sm font-semibold text-zinc-100">ZERO-SERVER DEAD DROP</h2>
+            </div>
+            <span class="font-mono text-[10px] text-zinc-500">AES-GCM / HASH</span>
+          </div>
+          <textarea id="drop-message" rows="2" placeholder="Secret note to lock (or paste a DROP:... payload to unlock)..." class="w-full bg-void border border-zinc-700 rounded-lg p-2.5 font-mono text-xs text-zinc-100 focus:outline-none focus:border-gold"></textarea>
+          <div class="flex gap-2">
+            <input id="drop-pass" type="password" placeholder="Passphrase..." class="flex-1 bg-void border border-zinc-700 rounded-lg px-3 py-2 font-mono text-xs text-zinc-100 focus:outline-none focus:border-gold" />
+            <button id="drop-lock-btn" class="px-3.5 py-2 rounded-lg bg-gold text-void font-mono text-xs font-bold hover:bg-amber-300">LOCK</button>
+            <button id="drop-unlock-btn" class="px-3.5 py-2 rounded-lg bg-panelLight border border-emerald-500/40 text-emerald-300 font-mono text-xs font-bold hover:bg-emerald-500/15">UNLOCK</button>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="font-mono text-[10px] text-zinc-500">DEAD-DROP PAYLOAD / DECRYPTED NOTE</span>
+            <button id="copy-drop-btn" class="font-mono text-[11px] text-gold hover:underline">COPY</button>
+          </div>
+          <div id="drop-output" class="bg-void border border-zinc-800 rounded-lg p-2.5 font-mono text-xs text-amber-300 break-all min-h-[44px]"></div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Interactive Bottom CLI Bar -->
+  <div id="cli-drawer" class="fixed bottom-0 inset-x-0 z-40 border-t border-gold/30 bg-void/95 backdrop-blur-md">
+    <div id="cli-output-panel" class="hidden max-w-7xl mx-auto px-3 sm:px-6 py-2.5 border-b border-zinc-800 max-h-48 overflow-y-auto font-mono text-xs space-y-1 text-zinc-300"></div>
+    <form id="cli-form" class="max-w-7xl mx-auto px-3 sm:px-6 h-11 flex items-center gap-2">
+      <span class="font-mono text-xs font-bold text-gold">komorebi@shell:~$</span>
+      <input id="cli-input" type="text" autocomplete="off" placeholder="Type 'help', 'dns example.com', 'cidr 10.0.0.0/8', 'boot', or 'burn'..." class="flex-1 bg-transparent font-mono text-xs text-zinc-100 focus:outline-none placeholder:text-zinc-600" />
+      <button type="button" id="cli-close-out" class="hidden font-mono text-[10px] text-zinc-500 hover:text-zinc-200 px-2 py-0.5 rounded border border-zinc-800">HIDE LOG</button>
+    </form>
+  </div>
+
+  <script>
+    // =========================================================================
+    // UTILITIES: Toast, Clipboard, LocalStorage, Clock
+    // =========================================================================
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toast-container');
+      const el = document.createElement('div');
+      const border = type === 'error' ? 'border-red-500/60 text-red-200' : 'border-gold/60 text-zinc-100';
+      el.className = `pointer-events-auto px-3.5 py-2 rounded-lg bg-panel/95 border ${border} font-mono text-xs shadow-xl backdrop-blur transition-opacity duration-300`;
+      el.textContent = message;
+      container.appendChild(el);
+      setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, 2600);
+    }
+
+    async function copyText(text) {
+      if (!text) return;
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+          showToast('Copied to clipboard');
+          return;
+        }
+      } catch (_) {}
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+        showToast('Copied to clipboard');
+      } catch (_) { showToast('Copy failed', 'error'); }
+    }
+
+    function lsGet(key, fallback) {
+      try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; }
+      catch (_) { return fallback; }
+    }
+    function lsSet(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (_) {} }
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+    function updateClock() {
+      const el = document.getElementById('utc-clock');
+      if (el) el.textContent = new Date().toISOString().slice(11, 19) + ' UTC';
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // =========================================================================
+    // NAVIGATION & TAB STATE
+    // =========================================================================
+    let activeTab = 'broadcast';
+    let mapInitialized = false;
+
+    function switchTab(tabId) {
+      activeTab = tabId;
+      document.querySelectorAll('.module-panel').forEach(p => p.classList.add('hidden'));
+      const target = document.getElementById(`panel-${tabId}`);
+      if (target) target.classList.remove('hidden');
+
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        const isCurrent = btn.dataset.tab === tabId;
+        btn.className = isCurrent
+          ? 'tab-btn px-2.5 py-1.5 rounded-md font-mono text-xs font-bold bg-gold text-void transition-all flex items-center gap-1.5'
+          : 'tab-btn px-2.5 py-1.5 rounded-md font-mono text-xs font-medium text-zinc-400 hover:text-zinc-100 transition-all flex items-center gap-1.5';
+      });
+      document.querySelectorAll('.tab-btn-mobile').forEach(btn => {
+        const isCurrent = btn.dataset.tab === tabId;
+        btn.className = isCurrent
+          ? 'tab-btn-mobile px-3 py-2 rounded font-mono text-xs text-left border border-gold bg-gold/15 text-gold font-bold'
+          : 'tab-btn-mobile px-3 py-2 rounded font-mono text-xs text-left border border-zinc-800 text-zinc-300';
+      });
+      document.getElementById('mobile-nav').classList.add('hidden');
+      if (tabId === 'threatmap' && !mapInitialized) initThreatMap();
+      if (tabId === 'textwall') resizeWallCanvas();
+    }
+
+    document.querySelectorAll('.tab-btn, .tab-btn-mobile').forEach(btn => {
+      btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+    });
+    document.getElementById('mobile-menu-btn').addEventListener('click', () => {
+      document.getElementById('mobile-nav').classList.toggle('hidden');
+    });
+
+    // =========================================================================
+    // AUDIO ENGINE (Morse output + scope analyser)
+    // =========================================================================
+    let audioCtx = null, analyser = null;
+
+    function getAudioCtx() {
+      if (!audioCtx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) {
+          audioCtx = new AC();
+          analyser = audioCtx.createAnalyser();
+          analyser.fftSize = 256;
+          analyser.connect(audioCtx.destination);
+        }
+      }
+      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+      return audioCtx;
+    }
+
+    function drawScope() {
+      const canvas = document.getElementById('audio-scope');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width = canvas.clientWidth || 240;
+      const h = canvas.height = canvas.clientHeight || 56;
+      ctx.fillStyle = '#06070a';
+      ctx.fillRect(0, 0, w, h);
+      ctx.strokeStyle = '#e5b84b';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      if (analyser) {
+        const data = new Uint8Array(analyser.frequencyBinCount);
+        analyser.getByteTimeDomainData(data);
+        const slice = w / data.length;
+        for (let i = 0; i < data.length; i++) {
+          const y = (data[i] / 128.0) * (h / 2);
+          if (i === 0) ctx.moveTo(0, y); else ctx.lineTo(i * slice, y);
+        }
+      } else {
+        ctx.moveTo(0, h / 2); ctx.lineTo(w, h / 2);
+      }
+      ctx.stroke();
+      requestAnimationFrame(drawScope);
+    }
+    drawScope();
+
+    // =========================================================================
+    // MODULE 01: SIGNAL — MORSE & CRYPTO LAB
+    // =========================================================================
+    const MORSE_MAP = {
+      A:'.-', B:'-...', C:'-.-.', D:'-..', E:'.', F:'..-.', G:'--.', H:'....', I:'..', J:'.---',
+      K:'-.-', L:'.-..', M:'--', N:'-.', O:'---', P:'.--.', Q:'--.-', R:'.-.', S:'...', T:'-',
+      U:'..-', V:'...-', W:'.--', X:'-..-', Y:'-.--', Z:'--..',
+      '0':'-----','1':'.----','2':'..---','3':'...--','4':'....-','5':'.....',
+      '6':'-....','7':'--...','8':'---..','9':'----.', '.':'.-.-.-', ',':'--..--', '?':'..--..', '/':'-..-.'
+    };
+    const REVERSE_MORSE = Object.fromEntries(Object.entries(MORSE_MAP).map(([k, v]) => [v, k]));
+    function textToMorse(str) { return str.toUpperCase().split(/\s+/).map(w => w.split('').map(c => MORSE_MAP[c] || '').filter(Boolean).join(' ')).filter(Boolean).join(' / '); }
+    function morseToText(morse) { return morse.trim().split(/\s*\/\s*/).map(w => w.trim().split(/\s+/).map(s => REVERSE_MORSE[s] || '').join('')).join(' '); }
+
+    const morsePlainEl = document.getElementById('morse-plain');
+    const morseCodeEl = document.getElementById('morse-code');
+    morseCodeEl.value = textToMorse(morsePlainEl.value);
+    morsePlainEl.addEventListener('input', () => { morseCodeEl.value = textToMorse(morsePlainEl.value); });
+    morseCodeEl.addEventListener('input', () => { morsePlainEl.value = morseToText(morseCodeEl.value); });
+
+    document.getElementById('copy-morse-btn').addEventListener('click', () => copyText(morseCodeEl.value));
+
+    const synthFreqEl = document.getElementById('synth-freq');
+    synthFreqEl.addEventListener('input', () => { document.getElementById('synth-freq-val').textContent = synthFreqEl.value + ' Hz'; });
+
+    let activeOscillators = [];
+    function stopMorseAudio() { activeOscillators.forEach(osc => { try { osc.stop(); osc.disconnect(); } catch (_) {} }); activeOscillators = []; }
+    document.getElementById('stop-morse-btn').addEventListener('click', () => { stopMorseAudio(); showToast('Transmission halted'); });
+
+    document.getElementById('play-morse-btn').addEventListener('click', () => {
+      const ctx = getAudioCtx(); if (!ctx) return;
+      stopMorseAudio();
+      const code = morseCodeEl.value.trim(); if (!code) return;
+      const freq = Number(synthFreqEl.value) || 528;
+      const wave = document.getElementById('synth-wave').value;
+      const unit = 0.065;
+      let t = ctx.currentTime + 0.05;
+      for (const ch of code) {
+        if (ch === '.' || ch === '-') {
+          const dur = ch === '.' ? unit : unit * 3;
+          const osc = ctx.createOscillator(), gain = ctx.createGain();
+          osc.type = wave; osc.frequency.value = freq;
+          gain.gain.setValueAtTime(0.0001, t);
+          gain.gain.exponentialRampToValueAtTime(0.14, t + 0.008);
+          gain.gain.setValueAtTime(0.14, t + dur - 0.008);
+          gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+          osc.connect(gain); gain.connect(analyser);
+          osc.start(t); osc.stop(t + dur + 0.01);
+          activeOscillators.push(osc);
+          t += dur + unit;
+        } else if (ch === ' ') t += unit * 2;
+        else if (ch === '/') t += unit * 4;
+      }
+      showToast('Transmitting Morse audio...');
+    });
+
+    function sha256Fallback(ascii) {
+      function rightRotate(v, a) { return (v >>> a) | (v << (32 - a)); }
+      const maxWord = Math.pow(2, 32);
+      let result = '';
+      const words = [], asciiBitLength = ascii.length * 8;
+      let hash = sha256Fallback.h = sha256Fallback.h || [], k = sha256Fallback.k = sha256Fallback.k || [], primeCounter = k.length;
+      const isComposite = {};
+      for (let c = 2; primeCounter < 64; c++) {
+        if (!isComposite[c]) {
+          for (let i = 0; i < 313; i += c) isComposite[i] = c;
+          hash[primeCounter] = (Math.pow(c, 0.5) * maxWord) | 0;
+          k[primeCounter++] = (Math.pow(c, 1 / 3) * maxWord) | 0;
+        }
+      }
+      ascii += '\x80';
+      while (ascii.length % 64 - 56) ascii += '\x00';
+      for (let i = 0; i < ascii.length; i++) {
+        const j = ascii.charCodeAt(i); if (j >> 8) return '';
+        words[i >> 2] |= j << ((3 - i) % 4) * 8;
+      }
+      words[words.length] = ((asciiBitLength / maxWord) | 0); words[words.length] = asciiBitLength;
+      for (let j = 0; j < words.length;) {
+        const w = words.slice(j, j += 16), oldHash = hash.slice(0);
+        hash = hash.slice(0, 8);
+        for (let i = 0; i < 64; i++) {
+          const w15 = w[i - 15], w2 = w[i - 2], a = hash[0], e = hash[4];
+          const temp1 = hash[7] + (rightRotate(e, 6) ^ rightRotate(e, 11) ^ rightRotate(e, 25)) + ((e & hash[5]) ^ ((~e) & hash[6])) + k[i] + (w[i] = (i < 16) ? w[i] : (w[i - 16] + (rightRotate(w15, 7) ^ rightRotate(w15, 18) ^ (w15 >>> 3)) + w[i - 7] + (rightRotate(w2, 17) ^ rightRotate(w2, 19) ^ (w2 >>> 10))) | 0);
+          const temp2 = (rightRotate(a, 2) ^ rightRotate(a, 13) ^ rightRotate(a, 22)) + ((a & hash[1]) ^ (a & hash[2]) ^ (hash[1] & hash[2]));
+          hash = [(temp1 + temp2) | 0].concat(hash); hash[4] = (hash[4] + temp1) | 0;
+        }
+        for (let i = 0; i < 8; i++) hash[i] = (hash[i] + oldHash[i]) | 0;
+      }
+      for (let i = 0; i < 8; i++) for (let j = 3; j + 1; j--) result += (((hash[i] >> (j * 8)) & 255) < 16 ? '0' : '') + ((hash[i] >> (j * 8)) & 255).toString(16);
+      return result;
+    }
+
+    async function runCipher(mode) {
+      const input = document.getElementById('cipher-input').value;
+      const outEl = document.getElementById('cipher-output');
+      const lblEl = document.getElementById('cipher-output-label');
+      try {
+        if (mode === 'sha256' || mode === 'sha1') {
+          const algo = mode === 'sha256' ? 'SHA-256' : 'SHA-1';
+          lblEl.textContent = `OUTPUT (${algo})`;
+          if (window.crypto && window.crypto.subtle) {
+            const buf = await crypto.subtle.digest(algo, new TextEncoder().encode(input));
+            outEl.textContent = Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+          } else if (mode === 'sha256') outEl.textContent = sha256Fallback(input);
+          else outEl.textContent = 'SHA-1 requires HTTPS/secure context (use SHA-256)';
+        } else if (mode === 'b64enc') { lblEl.textContent = 'OUTPUT (BASE64 ENCODED)'; outEl.textContent = btoa(unescape(encodeURIComponent(input))); }
+        else if (mode === 'b64dec') { lblEl.textContent = 'OUTPUT (BASE64 DECODED)'; outEl.textContent = decodeURIComponent(escape(atob(input.trim()))); }
+        else if (mode === 'hexenc') { lblEl.textContent = 'OUTPUT (HEXADECIMAL)'; outEl.textContent = Array.from(new TextEncoder().encode(input)).map(b => b.toString(16).padStart(2, '0')).join(' '); }
+        else if (mode === 'rot13') {
+          lblEl.textContent = 'OUTPUT (ROT13)';
+          outEl.textContent = input.replace(/[a-zA-Z]/g, c => String.fromCharCode(((c.charCodeAt(0) - (c <= 'Z' ? 65 : 97) + 13) % 26) + (c <= 'Z' ? 65 : 97)));
+        }
+      } catch (_) { outEl.textContent = 'Error: Invalid input for ' + mode; }
+    }
+    document.querySelectorAll('.cipher-action-btn').forEach(btn => btn.addEventListener('click', () => runCipher(btn.dataset.cipher)));
+    document.getElementById('copy-cipher-btn').addEventListener('click', () => copyText(document.getElementById('cipher-output').textContent));
+    runCipher('sha256');
+
+    // =========================================================================
+    // MODULE 02: TELEMETRY (LIVE USGS QUAKES + LIVE ISS + LATENCY) — real feeds only
+    // =========================================================================
+    const fmtMag = m => (typeof m === 'number' && isFinite(m)) ? m.toFixed(1) : '?';
+
+    let mapLayer = 'quakes', mapProjection = null, planetLayer = null, issTimer = null;
+
+    function markUpdated(src) {
+      document.getElementById('map-updated').textContent = `${src} · ${new Date().toISOString().slice(11, 19)} UTC`;
+    }
+    function showInspector(title, body) {
+      document.getElementById('inspected-country').textContent = title;
+      document.getElementById('inspected-stats').textContent = body;
+      document.getElementById('node-inspector-badge').classList.remove('hidden');
+    }
+
+    async function initThreatMap() {
+      mapInitialized = true;
+      const svgEl = document.getElementById('threat-svg'), loadEl = document.getElementById('map-loading');
+      const width = 900, height = 460;
+
+      try {
+        if (!window.d3 || !window.topojson) throw new Error('map libs not loaded');
+        const svg = d3.select('#threat-svg').attr('viewBox', `0 0 ${width} ${height}`).attr('preserveAspectRatio', 'xMidYMid meet');
+        mapProjection = d3.geoNaturalEarth1().scale(165).translate([width / 2, height / 2 + 15]);
+        const path = d3.geoPath(mapProjection);
+        const res = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
+        if (!res.ok) throw new Error('Map fetch failed');
+        const world = await res.json();
+        const countries = topojson.feature(world, world.objects.countries);
+        loadEl.classList.add('hidden'); svgEl.classList.remove('hidden');
+
+        svg.append('path').datum(d3.geoGraticule10()).attr('d', path).attr('fill', 'none').attr('stroke', 'rgba(229, 184, 75, 0.06)').attr('stroke-width', 0.6);
+        svg.append('g').selectAll('path').data(countries.features).join('path').attr('d', path).attr('fill', '#111520').attr('stroke', 'rgba(229, 184, 75, 0.18)').attr('stroke-width', 0.5);
+        planetLayer = svg.append('g');
+      } catch (_) {
+        loadEl.textContent = 'Basemap unavailable — live feed list still loads at right.';
+      }
+      switchMapLayer(mapLayer);
+    }
+
+    async function loadQuakes() {
+      const feed = document.getElementById('threat-feed');
+      try {
+        const res = await fetch('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_day.geojson', { cache: 'no-store' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (mapLayer !== 'quakes') return;
+        const features = (data.features || []).filter(f => f.geometry && Array.isArray(f.geometry.coordinates));
+        document.getElementById('attack-counter').textContent = features.length.toLocaleString();
+        if (planetLayer && mapProjection) {
+          planetLayer.selectAll('*').remove();
+          planetLayer.selectAll('circle').data(features).join('circle')
+            .attr('cx', d => mapProjection(d.geometry.coordinates.slice(0, 2))[0])
+            .attr('cy', d => mapProjection(d.geometry.coordinates.slice(0, 2))[1])
+            .attr('r', d => Math.max(2.5, (d.properties.mag || 2.5) * 1.5))
+            .attr('fill', 'rgba(251, 191, 36, 0.35)')
+            .attr('stroke', '#fbbf24').attr('stroke-width', 1)
+            .style('cursor', 'pointer')
+            .on('click', (_, d) => showInspector(
+              `M${fmtMag(d.properties.mag)} Earthquake`,
+              `${d.properties.place || 'Unknown location'} · ${new Date(d.properties.time).toISOString().replace('T', ' ').slice(0, 19)} UTC · depth ${fmtMag(d.geometry.coordinates[2])} km`
+            ));
+        }
+        feed.innerHTML = '';
+        features.slice(0, 25).forEach(f => {
+          const row = document.createElement('div');
+          row.className = 'px-2 py-1.5 rounded bg-void/90 border border-zinc-800/80 flex justify-between gap-2';
+          row.innerHTML = `<span class="truncate text-amber-300">M${esc(fmtMag(f.properties.mag))} <span class="text-zinc-300">${esc(f.properties.place)}</span></span><span class="text-zinc-600 shrink-0">${esc(new Date(f.properties.time).toISOString().slice(11, 16))}</span>`;
+          feed.appendChild(row);
+        });
+        markUpdated('USGS');
+      } catch (err) {
+        feed.innerHTML = `<div class="text-red-400">USGS feed unavailable: ${esc(err.message)}</div>`;
+      }
+    }
+
+    async function loadISS() {
+      const feed = document.getElementById('threat-feed');
+      try {
+        const res = await fetch('https://api.wheretheiss.at/v1/satellites/25544', { cache: 'no-store' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const iss = await res.json();
+        if (mapLayer !== 'iss') return;
+        document.getElementById('attack-counter').textContent = Math.round(iss.velocity).toLocaleString();
+        if (planetLayer && mapProjection) {
+          planetLayer.selectAll('*').remove();
+          const pt = mapProjection([iss.longitude, iss.latitude]);
+          planetLayer.append('circle').attr('cx', pt[0]).attr('cy', pt[1]).attr('r', 12).attr('fill', 'rgba(52, 211, 153, 0.2)').attr('stroke', '#34d399').attr('stroke-width', 1.5);
+          planetLayer.append('circle').attr('cx', pt[0]).attr('cy', pt[1]).attr('r', 4).attr('fill', '#34d399');
+        }
+        feed.innerHTML = `
+          <div class="p-2 rounded bg-void border border-zinc-800 space-y-1">
+            <div class="text-emerald-400 font-bold">ISS (ZARYA) · NORAD 25544</div>
+            <div>LAT: <span class="text-zinc-100">${esc(Number(iss.latitude).toFixed(4))}°</span></div>
+            <div>LON: <span class="text-zinc-100">${esc(Number(iss.longitude).toFixed(4))}°</span></div>
+            <div>ALTITUDE: <span class="text-cyan-300">${esc(Number(iss.altitude).toFixed(2))} km</span></div>
+            <div>VISIBILITY: <span class="text-amber-300">${esc(iss.visibility)}</span></div>
+            <div class="text-zinc-500 text-[10px] pt-1">Auto-refresh every 10 s while this layer is open</div>
+          </div>`;
+        markUpdated('wheretheiss.at');
+      } catch (err) {
+        feed.innerHTML = `<div class="text-red-400">ISS feed unavailable: ${esc(err.message)}</div>`;
+      }
+    }
+
+    function switchMapLayer(layer) {
+      mapLayer = layer;
+      if (issTimer) { clearInterval(issTimer); issTimer = null; }
+      document.querySelectorAll('.map-layer-btn').forEach(b => {
+        b.className = b.dataset.layer === layer
+          ? 'map-layer-btn px-2.5 py-1 rounded font-mono text-[11px] bg-gold text-void font-bold'
+          : 'map-layer-btn px-2.5 py-1 rounded font-mono text-[11px] bg-panelLight border border-zinc-700 text-zinc-300';
+      });
+      if (planetLayer) planetLayer.selectAll('*').remove();
+      document.getElementById('node-inspector-badge').classList.add('hidden');
+      document.getElementById('threat-feed').innerHTML = '<div class="text-zinc-500">Fetching…</div>';
+      document.getElementById('attack-counter').textContent = '—';
+
+      if (layer === 'quakes') {
+        document.getElementById('feed-title').textContent = 'USGS SEISMIC M2.5+';
+        document.getElementById('telemetry-unit').textContent = 'quakes (24h)';
+        loadQuakes();
+      } else if (layer === 'iss') {
+        document.getElementById('feed-title').textContent = 'ISS ORBITAL TELEMETRY';
+        document.getElementById('telemetry-unit').textContent = 'km/h velocity';
+        loadISS();
+        issTimer = setInterval(() => { if (activeTab === 'threatmap') loadISS(); }, 10000);
+      }
+    }
+
+    document.querySelectorAll('.map-layer-btn').forEach(btn => btn.addEventListener('click', () => switchMapLayer(btn.dataset.layer)));
+    document.getElementById('map-refresh-btn').addEventListener('click', () => switchMapLayer(mapLayer));
+    document.getElementById('close-node-badge').addEventListener('click', () => {
+      document.getElementById('node-inspector-badge').classList.add('hidden');
+    });
+    // Edge Latency Probe
+    document.getElementById('run-latency-btn').addEventListener('click', async () => {
+      const box = document.getElementById('latency-results');
+      box.innerHTML = '<div class="text-gold">Probing global HTTPS endpoints...</div>';
+      const targets = [
+        { name: 'Cloudflare DoH', url: 'https://cloudflare-dns.com/dns-query?name=example.com&type=A' },
+        { name: 'jsDelivr CDN', url: 'https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/package.json' },
+        { name: 'USGS GeoJSON', url: 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_day.geojson' }
+      ];
+      const rows = [];
+      for (const t of targets) {
+        const t0 = performance.now();
+        try {
+          await fetch(t.url, { cache: 'no-store' });
+          const ms = Math.round(performance.now() - t0);
+          rows.push(`<div class="flex justify-between"><span>${t.name}</span><span class="text-emerald-400 font-bold">${ms} ms</span></div>`);
+        } catch (_) {
+          rows.push(`<div class="flex justify-between"><span>${t.name}</span><span class="text-red-400">BLOCKED/ERR</span></div>`);
+        }
+      }
+      box.innerHTML = rows.join('');
+    });
+
+    async function lookupDNS(domain, type = 'A') {
+      const out = document.getElementById('dns-results');
+      out.innerHTML = '<span class="text-gold">Querying Cloudflare DoH...</span>';
+      try {
+        const res = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=${encodeURIComponent(type)}`, { headers: { 'Accept': 'application/dns-json' } });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (!data.Answer || data.Answer.length === 0) {
+          out.innerHTML = `<span class="text-zinc-400">No ${esc(type)} records for <b>${esc(domain)}</b>.</span>`;
+          return [];
+        }
+        out.innerHTML = data.Answer.map(a => `<div class="py-1 border-b border-zinc-800/70 last:border-0 flex justify-between gap-2"><span class="text-emerald-400 break-all">${esc(a.data)}</span><span class="text-zinc-500 shrink-0">${esc(a.TTL)}s</span></div>`).join('');
+        return data.Answer;
+      } catch (err) {
+        out.innerHTML = `<span class="text-red-400">Lookup failed: ${esc(err.message)}</span>`;
+        return null;
+      }
+    }
+    document.getElementById('dns-form').addEventListener('submit', e => {
+      e.preventDefault();
+      const domain = document.getElementById('dns-domain').value.trim();
+      if (domain) lookupDNS(domain, document.getElementById('dns-type').value);
+    });
+
+    function calculateCIDR(cidrStr) {
+      const out = document.getElementById('cidr-results');
+      const match = cidrStr.trim().match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/(\d{1,2})$/);
+      if (!match) { out.innerHTML = '<div class="col-span-2 text-red-400">Invalid CIDR. Example: 192.168.1.0/24</div>'; return null; }
+      const octets = match.slice(1, 5).map(Number), prefix = Number(match[5]);
+      if (octets.some(o => o > 255) || prefix < 0 || prefix > 32) { out.innerHTML = '<div class="col-span-2 text-red-400">Out of range.</div>'; return null; }
+      const ipInt = ((octets[0] << 24) | (octets[1] << 16) | (octets[2] << 8) | octets[3]) >>> 0;
+      const mask = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
+      const net = (ipInt & mask) >>> 0, bcast = (net | (~mask >>> 0)) >>> 0;
+      const total = Math.pow(2, 32 - prefix), usable = prefix >= 31 ? total : Math.max(0, total - 2);
+      const first = prefix >= 31 ? net : (net + 1) >>> 0, last = prefix >= 31 ? bcast : (bcast - 1) >>> 0;
+      const toIp = n => [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join('.');
+      const items = [['NETWORK', toIp(net)], ['BROADCAST', toIp(bcast)], ['NETMASK', toIp(mask)], ['WILDCARD', toIp(~mask >>> 0)], ['FIRST HOST', toIp(first)], ['LAST HOST', toIp(last)], ['USABLE', usable.toLocaleString()], ['PREFIX', '/' + prefix]];
+      out.innerHTML = items.map(([k, v]) => `<div><div class="text-[10px] text-zinc-500">${k}</div><div class="text-cyan-300 font-semibold">${v}</div></div>`).join('');
+      return { net: toIp(net), bcast: toIp(bcast), usable };
+    }
+    document.getElementById('cidr-form').addEventListener('submit', e => { e.preventDefault(); calculateCIDR(document.getElementById('cidr-input').value); });
+    calculateCIDR('10.42.0.15/20');
+
+    // =========================================================================
+    // MODULE 03: INFINITE TEXT WALL + RADAR + IMG-TO-ASCII
+    // =========================================================================
+    const WALL_KEY = 'kintsugi_text_wall_v1';
+    const CELL_W = 11, CELL_H = 19;
+    let wallCam = { x: -12, y: -4 }, wallCursor = { x: 0, y: 0 }, wallInk = '#e5b84b', wallCells = {};
+
+    function seedWall() {
+      const saved = lsGet(WALL_KEY, null);
+      if (saved && Object.keys(saved).length > 0) { wallCells = saved; return; }
+      const seeds = [
+        { x: -8, y: -2, text: '=== INFINITE TEXT WALL ===', color: '#e5b84b' },
+        { x: -8, y: 0, text: 'Click any cell and type. Drag to pan.', color: '#e4e4e7' },
+        { x: -8, y: 1, text: 'Everything here is saved in this browser only.', color: '#34d399' }
+      ];
+      seeds.forEach(s => { for (let i = 0; i < s.text.length; i++) wallCells[`${s.x + i},${s.y}`] = { ch: s.text[i], color: s.color }; });
+      lsSet(WALL_KEY, wallCells);
+    }
+    seedWall();
+
+
+    const wallCanvas = document.getElementById('text-wall-canvas');
+    const wallCtx = wallCanvas.getContext('2d');
+    function resizeWallCanvas() {
+      const rect = wallCanvas.getBoundingClientRect();
+      if (rect.width === 0) return;
+      const dpr = window.devicePixelRatio || 1;
+      wallCanvas.width = rect.width * dpr; wallCanvas.height = rect.height * dpr;
+      wallCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      renderWall();
+    }
+    window.addEventListener('resize', () => { if (activeTab === 'textwall') resizeWallCanvas(); });
+
+    function renderRadar() {
+      const radar = document.getElementById('wall-radar');
+      if (!radar) return;
+      const rctx = radar.getContext('2d');
+      rctx.fillStyle = '#06070a'; rctx.fillRect(0, 0, 120, 72);
+      const toRx = x => ((x + 60) / 140) * 120, toRy = y => ((y + 25) / 50) * 72;
+      for (const key in wallCells) {
+        const [x, y] = key.split(',').map(Number);
+        rctx.fillStyle = wallCells[key].color || '#e5b84b';
+        rctx.fillRect(toRx(x), toRy(y), 1.5, 1.5);
+      }
+      rctx.strokeStyle = '#ffffff'; rctx.lineWidth = 1;
+      rctx.strokeRect(toRx(wallCam.x), toRy(wallCam.y), 18, 12);
+    }
+    document.getElementById('wall-radar').addEventListener('click', e => {
+      const rect = e.target.getBoundingClientRect();
+      const wx = Math.round(((e.clientX - rect.left) / rect.width) * 140 - 60);
+      const wy = Math.round(((e.clientY - rect.top) / rect.height) * 50 - 25);
+      wallCursor = { x: wx, y: wy }; wallCam = { x: wx - 8, y: wy - 4 }; renderWall();
+    });
+
+    function renderWall() {
+      const rect = wallCanvas.getBoundingClientRect(), w = rect.width, h = rect.height;
+      if (!w || !h) return;
+      wallCtx.fillStyle = '#06070a'; wallCtx.fillRect(0, 0, w, h);
+      const cols = Math.ceil(w / CELL_W) + 2, rows = Math.ceil(h / CELL_H) + 2;
+      wallCtx.strokeStyle = 'rgba(229, 184, 75, 0.05)'; wallCtx.lineWidth = 1;
+      wallCtx.beginPath();
+      for (let c = 0; c <= cols; c++) { wallCtx.moveTo(c * CELL_W, 0); wallCtx.lineTo(c * CELL_W, h); }
+      for (let r = 0; r <= rows; r++) { wallCtx.moveTo(0, r * CELL_H); wallCtx.lineTo(w, r * CELL_H); }
+      wallCtx.stroke();
+
+      const curCol = wallCursor.x - wallCam.x, curRow = wallCursor.y - wallCam.y;
+      if (curCol >= 0 && curCol < cols && curRow >= 0 && curRow < rows) {
+        wallCtx.fillStyle = 'rgba(229, 184, 75, 0.22)'; wallCtx.fillRect(curCol * CELL_W, curRow * CELL_H, CELL_W, CELL_H);
+        wallCtx.strokeStyle = '#e5b84b'; wallCtx.strokeRect(curCol * CELL_W + 0.5, curRow * CELL_H + 0.5, CELL_W - 1, CELL_H - 1);
+      }
+
+      wallCtx.font = '14px "JetBrains Mono", monospace'; wallCtx.textBaseline = 'top';
+      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+        const cell = wallCells[`${wallCam.x + c},${wallCam.y + r}`];
+        if (cell && cell.ch !== ' ') { wallCtx.fillStyle = cell.color || '#e4e4e7'; wallCtx.fillText(cell.ch, c * CELL_W + 1, r * CELL_H + 2); }
+      }
+      document.getElementById('wall-coords').textContent = `(${wallCursor.x}, ${wallCursor.y})`;
+      renderRadar();
+    }
+
+    let isDraggingWall = false, dragMoved = false, dragStart = { x: 0, y: 0, camX: 0, camY: 0 };
+    wallCanvas.addEventListener('pointerdown', e => { isDraggingWall = true; dragMoved = false; dragStart = { x: e.clientX, y: e.clientY, camX: wallCam.x, camY: wallCam.y }; wallCanvas.focus(); });
+    window.addEventListener('pointermove', e => {
+      if (!isDraggingWall) return;
+      const dx = e.clientX - dragStart.x, dy = e.clientY - dragStart.y;
+      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) dragMoved = true;
+      if (dragMoved) { wallCam.x = dragStart.camX - Math.round(dx / CELL_W); wallCam.y = dragStart.camY - Math.round(dy / CELL_H); renderWall(); }
+    });
+    window.addEventListener('pointerup', e => {
+      if (!isDraggingWall) return; isDraggingWall = false;
+      if (!dragMoved) {
+        const rect = wallCanvas.getBoundingClientRect();
+        wallCursor.x = wallCam.x + Math.floor((e.clientX - rect.left) / CELL_W);
+        wallCursor.y = wallCam.y + Math.floor((e.clientY - rect.top) / CELL_H);
+        renderWall();
+      }
+    });
+    wallCanvas.addEventListener('keydown', e => {
+      if (e.key === 'ArrowRight') { wallCursor.x++; e.preventDefault(); }
+      else if (e.key === 'ArrowLeft') { wallCursor.x--; e.preventDefault(); }
+      else if (e.key === 'ArrowDown' || e.key === 'Enter') { wallCursor.y++; e.preventDefault(); }
+      else if (e.key === 'ArrowUp') { wallCursor.y--; e.preventDefault(); }
+      else if (e.key === 'Backspace') { wallCursor.x--; delete wallCells[`${wallCursor.x},${wallCursor.y}`]; lsSet(WALL_KEY, wallCells); e.preventDefault(); }
+      else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) { wallCells[`${wallCursor.x},${wallCursor.y}`] = { ch: e.key, color: wallInk }; wallCursor.x++; lsSet(WALL_KEY, wallCells); e.preventDefault(); }
+      renderWall();
+    });
+
+    document.querySelectorAll('.wall-color-btn').forEach(btn => btn.addEventListener('click', () => {
+      wallInk = btn.dataset.color;
+      document.querySelectorAll('.wall-color-btn').forEach(b => b.classList.remove('ring-2', 'ring-white'));
+      btn.classList.add('ring-2', 'ring-white');
+    }));
+
+    function jumpWall(x, y) {
+      wallCursor = { x, y }; wallCam = { x: x - 6, y: y - 4 };
+      if (activeTab !== 'textwall') switchTab('textwall'); else renderWall();
+    }
+    document.querySelectorAll('.wall-jump-btn').forEach(btn => btn.addEventListener('click', () => {
+      const [x, y] = btn.dataset.jump.split(',').map(Number); jumpWall(x, y);
+    }));
+    document.getElementById('wall-quick-form').addEventListener('submit', e => {
+      e.preventDefault();
+      const inp = document.getElementById('wall-quick-input'), txt = inp.value; if (!txt) return;
+      for (let i = 0; i < txt.length; i++) wallCells[`${wallCursor.x + i},${wallCursor.y}`] = { ch: txt[i], color: wallInk };
+      wallCursor.x += txt.length; lsSet(WALL_KEY, wallCells); inp.value = ''; renderWall();
+    });
+    document.getElementById('wall-stamp-btn').addEventListener('click', () => {
+      const art = ['  /\\  ', ' /  \\ ', '/GOLD\\', '\\____/'];
+      art.forEach((line, r) => { for (let c = 0; c < line.length; c++) wallCells[`${wallCursor.x + c},${wallCursor.y + r}`] = { ch: line[c], color: wallInk }; });
+      lsSet(WALL_KEY, wallCells); renderWall(); showToast('ASCII stamp placed');
+    });
+
+    // Image to ASCII Stamp onto Text Wall
+    document.getElementById('wall-ascii-img').addEventListener('change', e => {
+      const file = e.target.files[0]; if (!file) return;
+      const img = new Image();
+      img.onload = () => {
+        const w = 36, h = Math.max(10, Math.round((img.height / img.width) * w * 0.5));
+        const c = document.createElement('canvas'); c.width = w; c.height = h;
+        const cx = c.getContext('2d'); cx.drawImage(img, 0, 0, w, h);
+        const px = cx.getImageData(0, 0, w, h).data;
+        const ramp = ' .:-=+*#%@';
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const idx = (y * w + x) * 4;
+            const lum = (0.299 * px[idx] + 0.587 * px[idx + 1] + 0.114 * px[idx + 2]) / 255;
+            const ch = ramp[Math.min(ramp.length - 1, Math.floor(lum * ramp.length))];
+            if (ch !== ' ') wallCells[`${wallCursor.x + x},${wallCursor.y + y}`] = { ch, color: wallInk };
+          }
+        }
+        lsSet(WALL_KEY, wallCells); renderWall(); showToast('Image converted & stamped as ASCII');
+      };
+      img.src = URL.createObjectURL(file);
+    });
+
+    document.getElementById('wall-export-btn').addEventListener('click', () => {
+      const blob = new Blob([JSON.stringify(wallCells, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob); const a = document.createElement('a');
+      a.href = url; a.download = 'komorebi-wall-snapshot.json'; a.click(); URL.revokeObjectURL(url);
+      showToast('Exported wall JSON');
+    });
+    document.getElementById('wall-reset-btn').addEventListener('click', () => {
+      wallCells = {}; lsSet(WALL_KEY, {}); seedWall(); renderWall(); showToast('Wall reset');
+    });
+
+    // =========================================================================
+    // MODULE 04: DORK LAB + OSINT PIVOTS
+    // =========================================================================
+    const DORKS_KEY = 'kintsugi_saved_dorks_v1';
+    const PRESETS = {
+      pdfs: { keywords: '"observatory" OR "telemetry"', site: '.edu', filetype: 'pdf', inurl: '' },
+      opendir: { keywords: '"parent directory"', site: '', filetype: '', inurl: 'intitle:"index of"' },
+      configs: { keywords: '"DB_PASSWORD" OR "API_KEY"', site: '', filetype: 'env', inurl: '' },
+      buckets: { keywords: '"ListBucketResult"', site: 's3.amazonaws.com', filetype: 'xml', inurl: '' },
+      cameras: { keywords: '"Live View / - AXIS"', site: '', filetype: '', inurl: 'inurl:view/index.shtml' }
+    };
+
+    function compileDorks() {
+      const kw = document.getElementById('dork-keywords').value.trim(), site = document.getElementById('dork-site').value.trim();
+      const ft = document.getElementById('dork-filetype').value.trim(), inurl = document.getElementById('dork-inurl').value.trim();
+      const parts = [];
+      if (site) parts.push(`site:${site}`); if (ft) parts.push(`filetype:${ft}`); if (inurl) parts.push(inurl); if (kw) parts.push(kw);
+      const query = parts.join(' ') || 'site:.edu filetype:pdf';
+      document.getElementById('out-google').textContent = query;
+      document.getElementById('out-bing').textContent = query;
+      document.getElementById('out-ddg').textContent = query;
+      document.getElementById('link-google').href = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+      document.getElementById('link-bing').href = `https://www.bing.com/search?q=${encodeURIComponent(query)}`;
+      document.getElementById('link-ddg').href = `https://duckduckgo.com/?q=${encodeURIComponent(query)}`;
+      const targetDomain = (site || 'nasa.gov').replace(/^\./, '');
+      document.getElementById('pivot-crtsh').href = `https://crt.sh/?q=${encodeURIComponent(targetDomain)}`;
+      document.getElementById('pivot-wayback').href = `https://web.archive.org/web/*/${encodeURIComponent(targetDomain)}`;
+      document.getElementById('pivot-rdap').href = `https://client.rdap.org/?type=domain&object=${encodeURIComponent(targetDomain)}`;
+    }
+    ['dork-keywords', 'dork-site', 'dork-filetype', 'dork-inurl'].forEach(id => document.getElementById(id).addEventListener('input', compileDorks));
+    document.querySelectorAll('.dork-preset-btn').forEach(btn => btn.addEventListener('click', () => {
+      const p = PRESETS[btn.dataset.preset]; if (!p) return;
+      document.getElementById('dork-keywords').value = p.keywords; document.getElementById('dork-site').value = p.site;
+      document.getElementById('dork-filetype').value = p.filetype; document.getElementById('dork-inurl').value = p.inurl;
+      compileDorks();
+    }));
+    document.getElementById('clear-dork-btn').addEventListener('click', () => {
+      ['dork-keywords', 'dork-site', 'dork-filetype', 'dork-inurl'].forEach(id => { document.getElementById(id).value = ''; });
+      compileDorks();
+    });
+    document.querySelectorAll('.copy-dork-btn').forEach(btn => btn.addEventListener('click', () => copyText(document.getElementById(btn.dataset.copyTarget).textContent)));
+
+    function renderSavedDorks() {
+      const list = lsGet(DORKS_KEY, [{ id: '1', query: 'site:.edu filetype:pdf "observatory"' }, { id: '2', query: 'intitle:"index of" "parent directory"' }]);
+      document.getElementById('saved-dorks-count').textContent = `${list.length} saved`;
+      const container = document.getElementById('saved-dorks-list');
+      if (list.length === 0) { container.innerHTML = '<div class="col-span-full font-mono text-xs text-zinc-500">No saved dorks yet.</div>'; return; }
+      container.innerHTML = list.map(item => `
+        <div class="rounded-lg border border-zinc-800 bg-void p-3 flex flex-col justify-between gap-2">
+          <code class="font-mono text-[11px] text-amber-300 break-all">${item.query.replace(/</g, '&lt;')}</code>
+          <div class="flex items-center justify-between gap-2 pt-1">
+            <a href="https://www.google.com/search?q=${encodeURIComponent(item.query)}" target="_blank" rel="noopener noreferrer" class="font-mono text-[11px] text-gold hover:underline">LAUNCH ↗</a>
+            <button data-del-dork="${item.id}" class="del-dork-btn font-mono text-[11px] text-zinc-500 hover:text-red-400">DELETE</button>
+          </div>
+        </div>
+      `).join('');
+      container.querySelectorAll('.del-dork-btn').forEach(btn => btn.addEventListener('click', () => {
+        lsSet(DORKS_KEY, lsGet(DORKS_KEY, []).filter(d => d.id !== btn.dataset.delDork));
+        renderSavedDorks();
+      }));
+    }
+    document.getElementById('save-dork-btn').addEventListener('click', () => {
+      const query = document.getElementById('out-google').textContent.trim(); if (!query) return;
+      const list = lsGet(DORKS_KEY, [{ id: '1', query: 'site:.edu filetype:pdf "observatory"' }]);
+      list.unshift({ id: String(Date.now()), query }); lsSet(DORKS_KEY, list); renderSavedDorks(); showToast('Saved dork to vault');
+    });
+    compileDorks(); renderSavedDorks();
+
+    // =========================================================================
+    // MODULE 05: FORENSICS (Entropy, URL, LSB Stego, AES-GCM Dead Drop)
+    // =========================================================================
+    document.getElementById('file-probe-input').addEventListener('change', async e => {
+      const file = e.target.files[0]; if (!file) return;
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const hexHead = Array.from(bytes.slice(0, 8)).map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+      let sig = 'Unknown / Raw Data';
+      if (hexHead.startsWith('89 50 4E 47')) sig = 'PNG Image';
+      else if (hexHead.startsWith('FF D8 FF')) sig = 'JPEG Image';
+      else if (hexHead.startsWith('25 50 44 46')) sig = 'PDF Document';
+      else if (hexHead.startsWith('50 4B 03 04')) sig = 'ZIP / DOCX / XLSX';
+      else if (hexHead.startsWith('7F 45 4C 46')) sig = 'ELF Executable';
+      else if (hexHead.startsWith('4D 5A')) sig = 'PE / Windows EXE';
+      else if (bytes.slice(0, 64).every(b => b === 9 || b === 10 || b === 13 || (b >= 32 && b <= 126))) sig = 'ASCII / UTF-8 Text';
+
+      const counts = new Array(256).fill(0);
+      for (let i = 0; i < bytes.length; i++) counts[bytes[i]]++;
+      let entropy = 0;
+      for (let i = 0; i < 256; i++) if (counts[i] > 0) { const p = counts[i] / bytes.length; entropy -= p * Math.log2(p); }
+
+      document.getElementById('probe-sig').textContent = sig;
+      document.getElementById('probe-entropy').textContent = entropy.toFixed(3) + ' bits/B';
+      document.getElementById('probe-size').textContent = file.size.toLocaleString() + ' B';
+
+      const lines = [], limit = Math.min(bytes.length, 256);
+      for (let off = 0; off < limit; off += 16) {
+        const slice = bytes.slice(off, off + 16);
+        const hex = Array.from(slice).map(b => b.toString(16).padStart(2, '0')).join(' ').padEnd(47, ' ');
+        const asc = Array.from(slice).map(b => (b >= 32 && b <= 126) ? String.fromCharCode(b) : '.').join('');
+        lines.push(`${off.toString(16).padStart(4, '0')}  ${hex}  |${asc}|`);
+      }
+      document.getElementById('probe-hexdump').textContent = lines.join('\n');
+    });
+
+    function inspectURL(raw) {
+      const report = document.getElementById('url-scrub-report'), cleanOut = document.getElementById('url-clean-out');
+      try {
+        const u = new URL(raw.trim());
+        const isPuny = u.hostname.includes('xn--'), hasNonAscii = /[^\x00-\x7F]/.test(u.hostname);
+        const trackers = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'fbclid', 'gclid', 'mc_cid', 'igshid'];
+        const removed = [], cleanUrl = new URL(u.toString());
+        trackers.forEach(t => { if (cleanUrl.searchParams.has(t)) { removed.push(t); cleanUrl.searchParams.delete(t); } });
+        report.innerHTML = `
+          <div class="flex justify-between"><span class="text-zinc-500">HOST:</span><span class="text-zinc-200">${esc(u.hostname)}</span></div>
+          <div class="flex justify-between"><span class="text-zinc-500">HOMOGRAPH / PUNYCODE:</span><span class="${isPuny || hasNonAscii ? 'text-red-400 font-bold' : 'text-emerald-400'}">${isPuny ? 'FLAGGED (xn--)' : hasNonAscii ? 'FLAGGED (Non-ASCII)' : 'CLEAN ASCII'}</span></div>
+          <div class="flex justify-between"><span class="text-zinc-500">TRACKERS REMOVED:</span><span class="text-amber-300">${removed.length ? esc(removed.join(', ')) : 'None'}</span></div>`;
+        cleanOut.textContent = cleanUrl.toString();
+      } catch (_) {
+        report.innerHTML = '<div class="text-red-400">Invalid URL. Include https:// or http://</div>'; cleanOut.textContent = '';
+      }
+    }
+    document.getElementById('url-scrub-form').addEventListener('submit', e => { e.preventDefault(); inspectURL(document.getElementById('url-scrub-input').value); });
+    document.getElementById('copy-clean-url-btn').addEventListener('click', () => copyText(document.getElementById('url-clean-out').textContent));
+    inspectURL(document.getElementById('url-scrub-input').value);
+
+    // LSB PNG Steganography
+    const stegoCanvas = document.getElementById('stego-canvas');
+    const stegoCtx = stegoCanvas.getContext('2d');
+    let stegoLoaded = false;
+
+    document.getElementById('stego-file').addEventListener('change', e => {
+      const file = e.target.files[0]; if (!file) return;
+      const img = new Image();
+      img.onload = () => {
+        stegoCanvas.width = img.width; stegoCanvas.height = img.height;
+        stegoCtx.drawImage(img, 0, 0); stegoLoaded = true;
+        document.getElementById('stego-status').textContent = `${img.width}×${img.height} loaded`;
+      };
+      img.src = URL.createObjectURL(file);
+    });
+
+    document.getElementById('stego-gen-btn').addEventListener('click', () => {
+      stegoCanvas.width = 256; stegoCanvas.height = 256;
+      const g = stegoCtx.createLinearGradient(0, 0, 256, 256);
+      g.addColorStop(0, '#0c0e14'); g.addColorStop(1, '#1e2433');
+      stegoCtx.fillStyle = g; stegoCtx.fillRect(0, 0, 256, 256);
+      stegoLoaded = true;
+      document.getElementById('stego-status').textContent = '256×256 carrier ready';
+    });
+
+    document.getElementById('stego-encode-btn').addEventListener('click', () => {
+      if (!stegoLoaded) { showToast('Load an image or click USE BLANK CARRIER first', 'error'); return; }
+      const msg = document.getElementById('stego-secret').value + '\0';
+      const bits = Array.from(new TextEncoder().encode(msg)).flatMap(b => Array.from({ length: 8 }, (_, i) => (b >> (7 - i)) & 1));
+      const imgData = stegoCtx.getImageData(0, 0, stegoCanvas.width, stegoCanvas.height);
+      const d = imgData.data;
+      if (bits.length > (d.length / 4) * 3) { showToast('Message too long for image', 'error'); return; }
+      let bi = 0;
+      for (let i = 0; i < d.length && bi < bits.length; i++) {
+        if (i % 4 === 3) continue; // skip alpha
+        d[i] = (d[i] & 0xFE) | bits[bi++];
+      }
+      stegoCtx.putImageData(imgData, 0, 0);
+      stegoCanvas.toBlob(blob => {
+        const url = URL.createObjectURL(blob); const a = document.createElement('a');
+        a.href = url; a.download = 'komorebi-stego.png'; a.click(); URL.revokeObjectURL(url);
+        showToast('Encoded & downloaded PNG');
+      }, 'image/png');
+    });
+
+    document.getElementById('stego-decode-btn').addEventListener('click', () => {
+      if (!stegoLoaded) { showToast('Load a PNG first', 'error'); return; }
+      const d = stegoCtx.getImageData(0, 0, stegoCanvas.width, stegoCanvas.height).data;
+      const bytes = []; let cur = 0, cnt = 0;
+      for (let i = 0; i < d.length; i++) {
+        if (i % 4 === 3) continue;
+        cur = (cur << 1) | (d[i] & 1);
+        if (++cnt === 8) {
+          if (cur === 0) break;
+          bytes.push(cur); cur = 0; cnt = 0;
+          if (bytes.length > 2048) break;
+        }
+      }
+      const text = new TextDecoder().decode(new Uint8Array(bytes));
+      document.getElementById('stego-output').textContent = text || 'No null-terminated payload found.';
+    });
+
+    // Zero-Server Dead Drop (AES-GCM via crypto.subtle; requires HTTPS)
+    async function deriveKey(pass, salt) {
+      const km = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
+      return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: 50000, hash: 'SHA-256' }, km, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+    }
+    document.getElementById('drop-lock-btn').addEventListener('click', async () => {
+      const msg = document.getElementById('drop-message').value, pass = document.getElementById('drop-pass').value;
+      if (!msg || !pass) { showToast('Enter both message and passphrase', 'error'); return; }
+      if (window.crypto && window.crypto.subtle) {
+        const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+        const key = await deriveKey(pass, salt);
+        const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(msg)));
+        const packed = new Uint8Array(28 + ct.length);
+        packed.set(salt, 0); packed.set(iv, 16); packed.set(ct, 28);
+        document.getElementById('drop-output').textContent = 'DROP:' + btoa(String.fromCharCode(...packed));
+      } else {
+        showToast('AES-GCM requires HTTPS context', 'error');
+      }
+    });
+    document.getElementById('drop-unlock-btn').addEventListener('click', async () => {
+      const raw = document.getElementById('drop-message').value.trim(), pass = document.getElementById('drop-pass').value;
+      if (!raw.startsWith('DROP:') || !pass) { showToast('Paste DROP:... payload in box and enter passphrase', 'error'); return; }
+      try {
+        const bin = Uint8Array.from(atob(raw.slice(5)), c => c.charCodeAt(0));
+        const key = await deriveKey(pass, bin.slice(0, 16));
+        const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: bin.slice(16, 28) }, key, bin.slice(28));
+        document.getElementById('drop-output').textContent = new TextDecoder().decode(pt);
+      } catch (_) { document.getElementById('drop-output').textContent = 'Decryption failed (wrong passphrase or corrupted drop).'; }
+    });
+    document.getElementById('copy-drop-btn').addEventListener('click', () => copyText(document.getElementById('drop-output').textContent));
+
+    // =========================================================================
+    // INTERACTIVE BOTTOM CLI SHELL (Ctrl+K)
+    // =========================================================================
+    const cliOut = document.getElementById('cli-output-panel'), cliClose = document.getElementById('cli-close-out'), cliInput = document.getElementById('cli-input');
+    function printCLI(msg, color = 'text-zinc-300') {
+      cliOut.classList.remove('hidden'); cliClose.classList.remove('hidden');
+      const line = document.createElement('div'); line.className = color; line.textContent = msg;
+      cliOut.appendChild(line); cliOut.scrollTop = cliOut.scrollHeight;
+    }
+    cliClose.addEventListener('click', () => { cliOut.classList.add('hidden'); cliClose.classList.add('hidden'); });
+    document.getElementById('cli-toggle-btn').addEventListener('click', () => cliInput.focus());
+    window.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); cliInput.focus(); } });
+
+    const VFS = {
+      'readme.txt': 'Commands: help, ls, cat <file>, open <tab>, jump <x> <y>, dns <domain> [type], cidr <ip/prefix>, whoami, boot, burn, clear',
+      'tabs.txt': 'signal (alias broadcast), threatmap, textwall, dorklab, forensics',
+      'storage.txt': 'All data lives in this browser\'s localStorage. "burn" wipes it. Nothing is sent to a server.'
+    };
+
+    document.getElementById('cli-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const raw = cliInput.value.trim(); if (!raw) return;
+      printCLI(`komorebi@shell:~$ ${raw}`, 'text-gold'); cliInput.value = '';
+      const [cmd, ...args] = raw.split(/\s+/);
+      if (cmd === 'help') printCLI(VFS['readme.txt']);
+      else if (cmd === 'ls') printCLI('readme.txt   tabs.txt   storage.txt', 'text-emerald-400');
+      else if (cmd === 'cat') { const t = args[0] || ''; printCLI(VFS[t] || `cat: ${t}: No such file`, VFS[t] ? 'text-cyan-300' : 'text-red-400'); }
+      else if (cmd === 'whoami') printCLI(`wanderer // ${navigator.platform || 'browser'} // ${Intl.DateTimeFormat().resolvedOptions().timeZone}`);
+      else if (cmd === 'open' && args[0]) {
+        let t = args[0].toLowerCase(); if (t === 'signal') t = 'broadcast';
+        if (['broadcast', 'threatmap', 'textwall', 'dorklab', 'forensics'].includes(t)) { switchTab(t); printCLI(`Switched to: ${t}`, 'text-emerald-400'); }
+        else printCLI('Valid: signal, threatmap, textwall, dorklab, forensics', 'text-red-400');
+      } else if (cmd === 'jump' && args.length >= 2) {
+        const x = Number(args[0]), y = Number(args[1]);
+        if (!Number.isNaN(x) && !Number.isNaN(y)) { jumpWall(x, y); printCLI(`Jumped to (${x}, ${y})`, 'text-emerald-400'); }
+      } else if (cmd === 'dns' && args[0]) {
+        switchTab('threatmap');
+        const ans = await lookupDNS(args[0], (args[1] || 'A').toUpperCase());
+        printCLI(ans && ans.length ? ans.map(a => a.data).join(' | ') : 'No DNS records', 'text-cyan-300');
+      } else if (cmd === 'cidr' && args[0]) {
+        switchTab('threatmap');
+        const res = calculateCIDR(args[0]);
+        printCLI(res ? `Net: ${res.net} | Bcast: ${res.bcast} | Hosts: ${res.usable}` : 'Invalid CIDR', res ? 'text-cyan-300' : 'text-red-400');
+      } else if (cmd === 'boot') { cliInput.blur(); runBoot();
+      } else if (cmd === 'burn') {
+        try { localStorage.clear(); } catch (_) {}
+        wallCells = {}; seedWall(); renderSavedDorks();
+        printCLI('Local storage purged. Session reset.', 'text-red-400'); showToast('Session burned & reset');
+      } else if (cmd === 'clear') { cliOut.innerHTML = ''; cliOut.classList.add('hidden'); cliClose.classList.add('hidden'); }
+      else printCLI(`Unknown command: ${cmd}. Type 'help'.`, 'text-red-400');
+    });
+
+    // =========================================================================
+    // BOOT SEQUENCE — every line is a real check run on this device
+    // =========================================================================
+    const bootEl = document.getElementById('boot-screen');
+    const bootLog = document.getElementById('boot-log');
+    const bootProg = document.getElementById('boot-progress');
+    let booting = false, bootRun = 0;
+
+    function bootLine(text, cls = 'text-zinc-400') {
+      const d = document.createElement('div');
+      d.className = cls; d.textContent = text;
+      bootLog.appendChild(d); bootLog.scrollTop = bootLog.scrollHeight;
+      return d;
+    }
+    function bootStatus(line, label, status, detail) {
+      const tag = { OK: 'text-emerald-400', WARN: 'text-amber-300', FAIL: 'text-red-400' }[status];
+      line.innerHTML = `<span class="${tag}">[${status === 'OK' ? ' OK ' : status}]</span> <span class="text-zinc-200">${esc(label)}</span>${detail ? ` <span class="text-zinc-500">· ${esc(detail)}</span>` : ''}`;
+    }
+    async function probe(url, opts = {}) {
+      const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 4000), t0 = performance.now();
+      try {
+        const r = await fetch(url, { cache: 'no-store', signal: ctl.signal, ...opts });
+        return r.ok ? ['OK', `${Math.round(performance.now() - t0)} ms`] : ['FAIL', `HTTP ${r.status}`];
+      } catch (e) {
+        return ['FAIL', e.name === 'AbortError' ? 'timeout 4 s' : 'unreachable'];
+      } finally { clearTimeout(timer); }
+    }
+
+    function dismissBoot() {
+      if (!booting) return;
+      booting = false; bootRun++;
+      bootEl.style.opacity = '0';
+      setTimeout(() => bootEl.classList.add('hidden'), 500);
+    }
+
+    async function runBoot() {
+      const run = ++bootRun;
+      booting = true;
+      bootLog.innerHTML = '';
+      bootEl.classList.remove('hidden');
+      bootEl.style.opacity = '1';
+      const alive = () => booting && run === bootRun;
+      const pause = ms => new Promise(r => setTimeout(r, ms));
+      const t0 = performance.now();
+
+      // Start network probes immediately so they run in parallel with local checks
+      const net = {
+        doh: probe('https://cloudflare-dns.com/dns-query?name=example.com&type=A', { headers: { Accept: 'application/dns-json' } }),
+        usgs: probe('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_day.geojson'),
+        iss: probe('https://api.wheretheiss.at/v1/satellites/25544'),
+        atlas: probe('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json')
+      };
+
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const header = [
+        ['KOMOREBI // SHELL', 'text-gold font-bold'],
+        [`boot ${new Date().toISOString().replace('T', ' ').slice(0, 19)} UTC · ${tz}`, 'text-zinc-500'],
+        [`host     ${location.host || 'local file'} (${location.protocol.replace(':', '')})`],
+        [`agent    ${navigator.userAgent}`],
+        [`cpu      ${navigator.hardwareConcurrency || '?'} logical threads${navigator.deviceMemory ? ` · ~${navigator.deviceMemory} GB RAM reported` : ''}`],
+        [`display  ${screen.width}×${screen.height} @ ${window.devicePixelRatio || 1}x · viewport ${innerWidth}×${innerHeight}`],
+        [`locale   ${navigator.language || '?'} · ${navigator.onLine ? 'online' : 'OFFLINE'}`],
+        ['']
+      ];
+      for (const [t, c] of header) { if (!alive()) return; bootLine(t, c); await pause(60); }
+
+      const checks = [
+        ['secure context', () => window.isSecureContext ? ['OK', location.protocol] : ['WARN', 'not HTTPS — SHA-1 and dead drop unavailable']],
+        ['webcrypto', () => (window.crypto && crypto.subtle) ? ['OK', 'SHA-256 · AES-GCM · PBKDF2'] : ['FAIL', 'hash lab and dead drop disabled']],
+        ['web audio', () => (window.AudioContext || window.webkitAudioContext) ? ['OK', 'morse synth ready'] : ['FAIL', 'morse audio disabled']],
+        ['canvas 2d', () => document.createElement('canvas').getContext('2d') ? ['OK', 'wall · stego · scope'] : ['FAIL', 'wall and stego disabled']],
+        ['local storage', () => {
+          try {
+            localStorage.setItem('__komorebi_probe', '1'); localStorage.removeItem('__komorebi_probe');
+            const cells = Object.keys(wallCells).length, dorks = lsGet(DORKS_KEY, []).length;
+            return ['OK', `${cells.toLocaleString()} wall cells · ${dorks} saved dorks`];
+          } catch (_) { return ['WARN', 'blocked — nothing will persist']; }
+        }],
+        ['tailwind runtime', () => window.tailwind ? ['OK', 'cdn.tailwindcss.com'] : ['WARN', 'CDN blocked — styles degraded']],
+        ['d3 + topojson', () => (window.d3 && window.topojson) ? ['OK', `d3 ${d3.version}`] : ['FAIL', 'CDN blocked — basemap disabled']],
+        ['lucide icons', () => window.lucide ? ['OK', 'unpkg.com'] : ['WARN', 'CDN blocked — icons missing']],
+        ['world atlas', () => net.atlas],
+        ['cloudflare doh', () => net.doh],
+        ['usgs quake feed', () => net.usgs],
+        ['iss telemetry api', () => net.iss]
+      ];
+
+      const tally = { OK: 0, WARN: 0, FAIL: 0 };
+      for (let i = 0; i < checks.length; i++) {
+        if (!alive()) return;
+        const [label, fn] = checks[i];
+        const line = bootLine(`[ .. ] ${label}`, 'text-zinc-500');
+        bootProg.textContent = `${i + 1}/${checks.length}`;
+        let res;
+        try { res = await fn(); } catch (e) { res = ['FAIL', e.message]; }
+        if (!alive()) return;
+        bootStatus(line, label, res[0], res[1]);
+        tally[res[0]]++;
+        await pause(90);
+      }
+
+      const ms = Math.round(performance.now() - t0);
+      bootLine('');
+      bootLine(`${tally.OK} ok · ${tally.WARN} warn · ${tally.FAIL} fail · ${ms} ms`, tally.FAIL ? 'text-amber-300' : 'text-emerald-400');
+      bootLine('starting shell_', 'text-gold');
+      bootProg.textContent = 'done';
+      await pause(900);
+      if (alive()) dismissBoot();
+    }
+
+    bootEl.addEventListener('pointerdown', dismissBoot);
+    document.getElementById('kintsugi-reload-btn').addEventListener('click', runBoot);
+    window.addEventListener('keydown', e => { if (booting) { e.preventDefault(); dismissBoot(); } }, true);
+
+    window.addEventListener('load', () => {
+      switchTab('broadcast');
+      if (window.lucide) lucide.createIcons();
+    });
+    // =========================================================================
+    // ENTRY GATE — particle constellation; INITIALIZE hands off to the boot
+    // =========================================================================
+    const gateEl = document.getElementById('entry-gate');
+    const gateCanvas = document.getElementById('gate-canvas');
+    let gateActive = true;
+
+    function initGateParticles() {
+      const ctx = gateCanvas.getContext('2d');
+      let w = gateCanvas.width = window.innerWidth;
+      let h = gateCanvas.height = window.innerHeight;
+      const pts = Array.from({ length: 48 }, () => ({
+        x: Math.random() * w, y: Math.random() * h,
+        vx: (Math.random() - 0.5) * 0.45, vy: (Math.random() - 0.5) * 0.45
+      }));
+      let mouse = { x: w / 2, y: h / 2 };
+      const onMove = e => { mouse = { x: e.clientX, y: e.clientY }; };
+      const onResize = () => { w = gateCanvas.width = window.innerWidth; h = gateCanvas.height = window.innerHeight; };
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('resize', onResize);
+
+      function tick() {
+        if (!gateActive) {
+          window.removeEventListener('pointermove', onMove);
+          window.removeEventListener('resize', onResize);
+          return;
+        }
+        ctx.fillStyle = '#06070a';
+        ctx.fillRect(0, 0, w, h);
+        for (let i = 0; i < pts.length; i++) {
+          const p = pts[i];
+          p.x += p.vx; p.y += p.vy;
+          if (p.x < 0 || p.x > w) p.vx *= -1;
+          if (p.y < 0 || p.y > h) p.vy *= -1;
+          ctx.fillStyle = 'rgba(229, 184, 75, 0.7)';
+          ctx.fillRect(p.x - 1, p.y - 1, 2.5, 2.5);
+          for (let j = i + 1; j < pts.length; j++) {
+            const q = pts[j];
+            const dist = Math.hypot(p.x - q.x, p.y - q.y);
+            if (dist < 140) {
+              ctx.strokeStyle = `rgba(229, 184, 75, ${(1 - dist / 140) * 0.22})`;
+              ctx.lineWidth = 1;
+              ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke();
+            }
+          }
+          const md = Math.hypot(p.x - mouse.x, p.y - mouse.y);
+          if (md < 170) {
+            ctx.strokeStyle = `rgba(52, 211, 153, ${(1 - md / 170) * 0.35})`;
+            ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(mouse.x, mouse.y); ctx.stroke();
+          }
+        }
+        const gc = document.getElementById('gate-clock');
+        if (gc) gc.textContent = new Date().toISOString().slice(11, 19) + ' UTC';
+        requestAnimationFrame(tick);
+      }
+      tick();
+    }
+
+    function initializeShell() {
+      if (!gateActive) return;
+      gateActive = false;
+      runBoot();                       // boot screen (z-60) appears over the gate
+      gateEl.style.opacity = '0';
+      setTimeout(() => gateEl.classList.add('hidden'), 500);
+    }
+    document.getElementById('enter-shell-btn').addEventListener('click', initializeShell);
+    window.addEventListener('keydown', e => {
+      if (gateActive && e.key === 'Enter') { e.preventDefault(); initializeShell(); }
+    });
+    initGateParticles();
+
+  </script>
+</body>
+</html>
